@@ -285,12 +285,14 @@
 
 @media (max-width: 768px) {
     .badges-grid {
-        grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+        grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
+        gap: var(--spacing-sm);
     }
 
     .xp-card {
         flex-direction: column;
         text-align: center;
+        padding: var(--spacing-md);
     }
 
     .streak-info {
@@ -299,7 +301,27 @@
     }
 
     .gamification-summary {
+        display: flex;
+        gap: 0.25rem;
+    }
+
+    .summary-pill span:not(.pill-icon) {
         display: none;
-        /* Hide on small mobile */
+        /* Hide text, keep icon and number if possible, or just icon */
+    }
+}
+
+@media (max-width: 480px) {
+    .badges-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+
+    .badge-icon {
+        font-size: 2rem;
+    }
+
+    .gamification-tabs .tab {
+        padding: var(--spacing-sm);
+        font-size: var(--text-xs);
     }
 }
