@@ -2238,14 +2238,7 @@ label {
    RESPONSIVE
    ============================================ */
 
-/* Mobile Base Adjustments */
-@media (max-width: 1024px) {
-  :root {
-    --spacing-3xl: 3rem;
-    --spacing-2xl: 2rem;
-  }
-}
-
+/* Mobile Base Adjustments (Tablets and Phones) */
 @media (max-width: 768px) {
   html {
     font-size: 15px;
@@ -2308,15 +2301,6 @@ label {
     padding: var(--spacing-lg);
   }
 
-  .btn {
-    width: 100%;
-    padding: 1rem;
-    font-size: 1rem;
-  }
-
-  .btn-large {
-    padding: 1.25rem;
-  }
 }
 
 /* Specific Phone Optimizations (iPhone / Android) */
