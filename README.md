@@ -1,5 +1,7 @@
 # 🎓 AIVY - AI-Powered Study Companion
 
+**Live Demo**: [https://aivyv1xa14.vercel.app/](https://aivyv1xa14.vercel.app/)
+
 A premium, academic-grade web application that uses **Gemini AI** to analyze study materials, generate quizzes, and provide personalized learning insights.
 
 ## ✨ Features
