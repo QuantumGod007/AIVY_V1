@@ -1,450 +1,886 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { signOut } from 'firebase/auth'
 import { auth } from '../firebase'
 import { useNavigate } from 'react-router-dom'
-import '../styles/global.css'
+import { extractTextFromFile } from '../services/pdfService'
+import { generatePrerequisiteSurvey, generateStudyGuidance, generateAdaptiveQuiz, generateTopicWiseSummary } from '../services/geminiService'
+import { saveCurrentQuiz, getCurrentQuiz, archiveCurrentSession } from '../services/storageService'
+import { initializeUserStats } from '../services/gamificationService'
+import Gamification from '../components/Gamification'
+import GamificationSummary from '../components/GamificationSummary'
+import {
+  Upload,
+  FileText,
+  Brain,
+  Sparkles,
+  CheckCircle2,
+  AlertCircle,
+  LogOut,
+  User,
+  TrendingUp,
+  Target,
+  BarChart3,
+  BookOpen,
+  Clock,
+  Award,
+  Activity,
+  Loader2,
+  Lock,
+  Play,
+  RefreshCw,
+  X,
+  Lightbulb,
+  Sun,
+  Moon
+} from 'lucide-react'
 
-const TOPICS = [
-  { id: 1, name: 'Mathematics', desc: 'Algebra, Calculus, Statistics' },
-  { id: 2, name: 'Python', desc: 'Programming fundamentals' },
-  { id: 3, name: 'Artificial Intelligence', desc: 'ML, Neural Networks' },
-  { id: 4, name: 'Data Structures', desc: 'Arrays, Trees, Graphs' },
-  { id: 5, name: 'Operating Systems', desc: 'Processes, Memory, Scheduling' },
-  { id: 6, name: 'DBMS', desc: 'SQL, Normalization, Transactions' },
-  { id: 7, name: 'Computer Networks', desc: 'TCP/IP, Protocols, Security' },
-]
-
-const QUESTIONS = [
-  { id: 1, q: 'Sample question 1 for the selected topic?', opts: ['Option A', 'Option B', 'Option C', 'Option D'] },
-  { id: 2, q: 'Sample question 2 for the selected topic?', opts: ['Option A', 'Option B', 'Option C', 'Option D'] },
-  { id: 3, q: 'Sample question 3 for the selected topic?', opts: ['Option A', 'Option B', 'Option C', 'Option D'] },
-]
+// Dashboard States
+const DASHBOARD_STATES = {
+  NO_DOCUMENT: 'NO_DOCUMENT',                    // State 1: Nothing uploaded
+  DOCUMENT_UPLOADED: 'DOCUMENT_UPLOADED',        // State 2: Document ready, survey not generated
+  SURVEY_READY: 'SURVEY_READY',                  // State 2b: Survey generated, not taken
+  SURVEY_COMPLETED: 'SURVEY_COMPLETED',          // State 3: Baseline established
+  QUIZ_IN_PROGRESS: 'QUIZ_IN_PROGRESS',          // State 4: Quiz started
+  QUIZ_COMPLETED: 'QUIZ_COMPLETED'               // State 5: Quiz finished
+}
 
 function Dashboard() {
-  const [activeScreen, setActiveScreen] = useState('topic')
-  const [activeMenu, setActiveMenu] = useState('Get Started Quiz')
-  const [step, setStep] = useState('topic')
-  const [selectedTopic, setSelectedTopic] = useState(null)
-  const [currentQ, setCurrentQ] = useState(0)
-  const [answers, setAnswers] = useState({})
-  const [selected, setSelected] = useState(null)
+  const [isProcessing, setIsProcessing] = useState(false)
+  const [isLoading, setIsLoading] = useState(true)
+  const [error, setError] = useState('')
+  const [success, setSuccess] = useState('')
+  const [selectedFile, setSelectedFile] = useState(null)
+  const [processingStage, setProcessingStage] = useState('')
+  const [showNewDocModal, setShowNewDocModal] = useState(false)
+
   const navigate = useNavigate()
+  const user = auth.currentUser
+  const userInitial = user?.email?.charAt(0).toUpperCase() || 'U'
 
-  const handleSignOut = async () => {
-    await signOut(auth)
-    navigate('/login')
+  // State management
+  const [currentQuiz, setCurrentQuiz] = useState(null)
+  const [dashboardState, setDashboardState] = useState(DASHBOARD_STATES.NO_DOCUMENT)
+
+  // Theme management
+  const [theme, setTheme] = useState(() => {
+    return localStorage.getItem('theme') || 'dark'
+  })
+
+  // Apply theme on mount and when it changes
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', theme)
+    localStorage.setItem('theme', theme)
+  }, [theme])
+
+  const toggleTheme = () => {
+    setTheme(prevTheme => prevTheme === 'dark' ? 'light' : 'dark')
   }
 
-  const startQuiz = () => {
-    if (selectedTopic) setStep('quiz')
-  }
 
-  const selectOption = (opt) => {
-    setSelected(opt)
-  }
+  useEffect(() => {
+    const loadQuizData = async () => {
+      try {
+        setIsLoading(true)
 
-  const nextQ = () => {
-    setAnswers({ ...answers, [currentQ]: selected })
-    setSelected(null)
-    if (currentQ < QUESTIONS.length - 1) {
-      setCurrentQ(currentQ + 1)
-    } else {
-      setStep('result')
+        // Initialize gamification stats for user
+        if (user?.uid) {
+          await initializeUserStats(user.uid)
+        }
+
+        const quiz = await getCurrentQuiz()
+        setCurrentQuiz(quiz)
+
+        // Determine dashboard state based on quiz data
+        if (!quiz) {
+          setDashboardState(DASHBOARD_STATES.NO_DOCUMENT)
+        } else if (quiz.questions && quiz.questions.length > 0) {
+          // Check if survey was completed
+          if (quiz.userAnswers && Object.keys(quiz.userAnswers).length > 0) {
+            // Check if it's a prerequisite survey or adaptive quiz
+            if (quiz.isPrerequisiteSurvey) {
+              setDashboardState(DASHBOARD_STATES.SURVEY_COMPLETED)
+            } else {
+              // Adaptive quiz in progress or completed
+              const allAnswered = Object.keys(quiz.userAnswers).length === quiz.questions.length
+              if (allAnswered) {
+                setDashboardState(DASHBOARD_STATES.QUIZ_COMPLETED)
+              } else {
+                setDashboardState(DASHBOARD_STATES.QUIZ_IN_PROGRESS)
+              }
+            }
+          } else {
+            // Survey generated but not taken
+            setDashboardState(DASHBOARD_STATES.SURVEY_READY)
+          }
+        }
+      } catch (error) {
+        console.error('Error loading quiz data:', error)
+      } finally {
+        setIsLoading(false)
+      }
+    }
+
+    loadQuizData()
+  }, [])
+
+  const handleLogout = async () => {
+    try {
+      await signOut(auth)
+      navigate('/login')
+    } catch (error) {
+      console.error('Logout error:', error)
     }
   }
 
-  const prevQ = () => {
-    if (currentQ > 0) {
-      setCurrentQ(currentQ - 1)
-      setSelected(answers[currentQ - 1] || null)
+  const handleFileSelect = (e) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    setSelectedFile(file)
+    setError('')
+    setSuccess('')
+  }
+
+  const handleUpload = async () => {
+    if (!selectedFile) {
+      setError('Please select a file first')
+      return
+    }
+
+    setIsProcessing(true)
+    setError('')
+    setSuccess('')
+    setProcessingStage('Extracting text from document...')
+
+    try {
+      const extractedText = await extractTextFromFile(selectedFile)
+
+      if (!extractedText || extractedText.length < 100) {
+        throw new Error('Document appears to be empty or too short')
+      }
+
+      setProcessingStage('Generating topic summaries...')
+
+      // Generate topic-wise summary (non-blocking)
+      const topicSummary = await generateTopicWiseSummary(extractedText)
+
+      setProcessingStage('Analyzing content with AI...')
+
+      const surveyQuestions = await generatePrerequisiteSurvey(extractedText)
+
+      if (!surveyQuestions || surveyQuestions.length === 0) {
+        throw new Error('Failed to generate prerequisite survey')
+      }
+
+      setProcessingStage('Saving survey to database...')
+
+      const quizData = {
+        documentName: selectedFile.name,
+        documentText: extractedText,
+        questions: surveyQuestions,
+        isPrerequisiteSurvey: true,
+        topicSummary: topicSummary // Save the summary
+      }
+
+      await saveCurrentQuiz(quizData)
+
+      // Reload quiz data and update state
+      const updatedQuiz = await getCurrentQuiz()
+      setCurrentQuiz(updatedQuiz)
+      setDashboardState(DASHBOARD_STATES.SURVEY_READY)
+      setSuccess(`Survey ready! Click "Start Survey" to begin.`)
+      setProcessingStage('')
+
+      setSelectedFile(null)
+      const fileInput = document.getElementById('file-upload')
+      if (fileInput) fileInput.value = ''
+
+    } catch (err) {
+      console.error('Upload error:', err)
+      setError(err.message || 'Failed to process document')
+      setProcessingStage('')
+    } finally {
+      setIsProcessing(false)
     }
   }
 
-  const reset = () => {
-    setStep('topic')
-    setSelectedTopic(null)
-    setCurrentQ(0)
-    setAnswers({})
-    setSelected(null)
+  const handleStartSurvey = () => {
+    // Only allow if in SURVEY_READY state
+    if (dashboardState !== DASHBOARD_STATES.SURVEY_READY) {
+      setError('Survey not available. Please upload a document first.')
+      return
+    }
+
+    navigate('/quiz')
   }
 
-  const score = Math.floor(Math.random() * 30) + 60
-  const level = score >= 80 ? 'Advanced' : score >= 60 ? 'Intermediate' : 'Beginner'
+  const handleContinueQuiz = () => {
+    navigate('/quiz')
+  }
+
+  const handleStartAdaptiveQuiz = async () => {
+    try {
+      console.log('Starting adaptive quiz generation...')
+      setIsProcessing(true)
+      setProcessingStage('Generating adaptive quiz based on your performance...')
+      setError('')
+
+      // Verify we have study guidance
+      if (!currentQuiz?.studyGuidance) {
+        setError('Study guidance not available. Please complete the survey first.')
+        setIsProcessing(false)
+        return
+      }
+
+      // Get survey data
+      const surveyQuestions = currentQuiz.questions
+      const surveyAnswers = currentQuiz.userAnswers
+
+      // Generate adaptive quiz
+      const adaptiveQuestions = await generateAdaptiveQuiz(
+        currentQuiz.documentText,
+        surveyQuestions,
+        surveyAnswers,
+        currentQuiz.studyGuidance
+      )
+
+      if (!adaptiveQuestions || adaptiveQuestions.length === 0) {
+        throw new Error('No questions generated')
+      }
+
+      // Save adaptive quiz (replace survey with adaptive quiz)
+      await saveCurrentQuiz({
+        documentName: currentQuiz.documentName,
+        documentText: currentQuiz.documentText,
+        questions: adaptiveQuestions,
+        isPrerequisiteSurvey: false, // This is the actual quiz
+        studyGuidance: currentQuiz.studyGuidance, // Keep guidance for reference
+        userAnswers: {}, // Reset answers
+        completedAt: null // Not completed yet
+      })
+
+      setSuccess('Adaptive quiz generated! Starting quiz...')
+
+      // Navigate to quiz page
+      setTimeout(() => {
+        navigate('/quiz')
+      }, 1000)
+    } catch (error) {
+      console.error('Error generating adaptive quiz:', error)
+      setError('Failed to generate adaptive quiz. Please try again.')
+    } finally {
+      setIsProcessing(false)
+      setProcessingStage('')
+    }
+  }
+
+  const handleStartNewDocument = () => {
+    // Show confirmation modal
+    setShowNewDocModal(true)
+  }
+
+  const handleConfirmNewDocument = async () => {
+    try {
+      setIsProcessing(true)
+      setProcessingStage('Archiving current session...')
+
+      // Archive current session
+      await archiveCurrentSession()
+
+      // Reset state
+      setCurrentQuiz(null)
+      setDashboardState(DASHBOARD_STATES.NO_DOCUMENT)
+      setShowNewDocModal(false)
+      setSuccess('Session archived. You can now upload a new document.')
+      setProcessingStage('')
+    } catch (error) {
+      console.error('Error starting new document:', error)
+      setError('Failed to archive session. Please try again.')
+    } finally {
+      setIsProcessing(false)
+    }
+  }
+
+  const handleCancelNewDocument = () => {
+    setShowNewDocModal(false)
+  }
+
+  // Helper functions for state checks
+  const isState = (state) => dashboardState === state
+  const isStateAtLeast = (state) => {
+    const stateOrder = [
+      DASHBOARD_STATES.NO_DOCUMENT,
+      DASHBOARD_STATES.DOCUMENT_UPLOADED,
+      DASHBOARD_STATES.SURVEY_READY,
+      DASHBOARD_STATES.SURVEY_COMPLETED,
+      DASHBOARD_STATES.QUIZ_IN_PROGRESS,
+      DASHBOARD_STATES.QUIZ_COMPLETED
+    ]
+    const currentIndex = stateOrder.indexOf(dashboardState)
+    const targetIndex = stateOrder.indexOf(state)
+    return currentIndex >= targetIndex
+  }
+
+  if (isLoading) {
+    return (
+      <div className="dashboard fade-in">
+        <div className="dashboard-header">
+          <div className="dashboard-header-content">
+            <div className="dashboard-greeting">
+              <h1 className="greeting-title">
+                <Brain size={28} />
+                Loading Dashboard...
+              </h1>
+            </div>
+          </div>
+        </div>
+      </div>
+    )
+  }
 
   return (
-    <div className="grid grid-cols-[240px_1fr_300px] h-screen bg-gray-950 text-white">
-      {/* Sidebar */}
-      <div className="bg-gray-900 border-r border-gray-800 flex flex-col">
-        <div className="p-6 border-b border-gray-800">
-          <div className="text-xl font-semibold tracking-wide text-blue-500">AIVY</div>
-          <div className="text-xs text-gray-500 mt-1">Student Dashboard</div>
-        </div>
-        <nav className="flex-1 p-4 space-y-3">
-          {['Home', 'Get Started Quiz', 'Learning Path', 'My Progress', 'AI Tutor', 'Challenges', 'Rewards', 'SWOT Report', 'Settings'].map((item) => (
+    <div className="dashboard fade-in">
+      {/* Header */}
+      <div className="dashboard-header">
+        <div className="dashboard-header-content">
+          <div className="dashboard-greeting">
+            <h1 className="greeting-title">
+              <Brain size={28} />
+              Learning Dashboard
+            </h1>
+            <p className="greeting-subtitle">
+              Track your progress and adaptive learning insights
+            </p>
+          </div>
+
+          <div className="dashboard-user">
+            <GamificationSummary />
+            <div className="user-avatar">
+              <User size={20} />
+            </div>
             <button
-              key={item}
-              onClick={() => {
-                setActiveMenu(item)
-                if (item === 'Get Started Quiz') setActiveScreen('topic')
-                else setActiveScreen(item.toLowerCase().replace(/\s+/g, '-'))
-              }}
-              className={`w-full text-left px-4 py-2.5 rounded-md text-sm font-medium transition ${activeMenu === item ? 'bg-gray-800 text-white' : 'text-gray-400 hover:bg-gray-800 hover:text-gray-200'}`}
+              onClick={toggleTheme}
+              className="theme-toggle"
+              aria-label="Toggle theme"
+              title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
             >
-              {item}
+              {theme === 'dark' ? <Sun size={20} /> : <Moon size={20} />}
             </button>
-          ))}
-        </nav>
-        <div className="p-4 border-t border-gray-800">
-          <button onClick={handleSignOut} className="w-full px-4 py-2 text-sm text-gray-400 hover:text-gray-200 hover:bg-gray-800 rounded-md transition">Sign out</button>
+            <button onClick={handleLogout} className="btn btn-secondary btn-icon">
+              <LogOut size={18} />
+              Logout
+            </button>
+          </div>
         </div>
       </div>
 
-      {/* Main */}
-      <div className="overflow-y-auto">
-        <div className="p-8">
-          {activeScreen === 'home' && (
-            <div>
-              <div className="mb-6">
-                <h1 className="text-2xl font-semibold">Welcome to AIVY</h1>
-                <p className="text-sm text-gray-400">Your AI-powered learning companion</p>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="bg-gray-900 border border-gray-800 rounded-lg p-6">
-                  <div className="text-lg font-semibold mb-2">Quick Start</div>
-                  <p className="text-sm text-gray-400 mb-4">Begin your learning journey</p>
-                  <button onClick={() => { setActiveMenu('Get Started Quiz'); setActiveScreen('topic'); }} className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-md hover:bg-blue-500 transition">Start Quiz</button>
-                </div>
-                <div className="bg-gray-900 border border-gray-800 rounded-lg p-6">
-                  <div className="text-lg font-semibold mb-2">Your Progress</div>
-                  <p className="text-sm text-gray-400 mb-4">Track your learning stats</p>
-                  <button onClick={() => { setActiveMenu('My Progress'); setActiveScreen('my-progress'); }} className="px-4 py-2 border border-gray-700 text-gray-300 text-sm font-medium rounded-md hover:bg-gray-800 transition">View Progress</button>
-                </div>
-              </div>
-            </div>
-          )}
+      {/* Main Content */}
+      <div className="dashboard-content">
 
-          {activeScreen === 'learning-path' && (
-            <div>
-              <div className="mb-6">
-                <h1 className="text-2xl font-semibold">Learning Path</h1>
-                <p className="text-sm text-gray-400">Your personalized learning journey</p>
+        {/* Error/Success Messages */}
+        {error && (
+          <div className="alert alert-error slide-up mb-lg">
+            <AlertCircle size={20} />
+            <span>{error}</span>
+          </div>
+        )}
+
+        {success && !error && (
+          <div className="alert alert-success slide-up mb-lg">
+            <CheckCircle2 size={20} />
+            <span>{success}</span>
+          </div>
+        )}
+
+        {/* AI Processing State */}
+        {isProcessing && (
+          <div className="processing-banner slide-up mb-lg">
+            <Loader2 className="processing-spinner" size={20} />
+            <span>{processingStage}</span>
+          </div>
+        )}
+
+        {/* Dashboard Grid Layout */}
+        <div className="dashboard-grid">
+
+          {/* Section 1: Learning Overview */}
+          <div className={`dashboard-section ${isStateAtLeast(DASHBOARD_STATES.SURVEY_COMPLETED) ? 'section-unlocked' : ''}`}>
+            <div className="section-header">
+              <BookOpen size={24} />
+              <h2>Learning Overview</h2>
+              {isStateAtLeast(DASHBOARD_STATES.SURVEY_COMPLETED) && <span className="section-badge">Active</span>}
+              {!isStateAtLeast(DASHBOARD_STATES.SURVEY_COMPLETED) && <Lock size={16} className="section-lock" />}
+            </div>
+
+            {!isStateAtLeast(DASHBOARD_STATES.SURVEY_COMPLETED) ? (
+              <div className="empty-state">
+                <div className="empty-icon">
+                  <BookOpen size={48} />
+                </div>
+                <h3>No learning data yet</h3>
+                <p>
+                  {isState(DASHBOARD_STATES.NO_DOCUMENT) && 'Upload study material to begin'}
+                  {isState(DASHBOARD_STATES.SURVEY_READY) && 'Complete the prerequisite survey to unlock'}
+                  {isState(DASHBOARD_STATES.DOCUMENT_UPLOADED) && 'Generate and complete survey to unlock'}
+                </p>
               </div>
-              <div className="space-y-4">
-                {['Beginner Level', 'Intermediate Level', 'Advanced Level'].map((level, i) => (
-                  <div key={i} className="bg-gray-900 border border-gray-800 rounded-lg p-6">
-                    <div className="flex justify-between items-center mb-3">
-                      <div className="text-base font-semibold">{level}</div>
-                      <div className="text-sm text-gray-400">{i * 30}% Complete</div>
+            ) : (
+              <div className="overview-content">
+                <div className="stat-card">
+                  <Clock size={20} />
+                  <div>
+                    <div className="stat-value">Just started</div>
+                    <div className="stat-label">Learning Journey</div>
+                  </div>
+                </div>
+                <div className="stat-card">
+                  <Target size={20} />
+                  <div>
+                    <div className="stat-value">Baseline Established</div>
+                    <div className="stat-label">Survey Complete</div>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Section 2: Adaptive Learning Insights */}
+          <div className={`dashboard-section ${isStateAtLeast(DASHBOARD_STATES.SURVEY_COMPLETED) ? 'section-unlocked' : ''}`}>
+            <div className="section-header">
+              <Activity size={24} />
+              <h2>Adaptive Learning Insights</h2>
+              {isStateAtLeast(DASHBOARD_STATES.SURVEY_COMPLETED) && <span className="section-badge">Active</span>}
+              {!isStateAtLeast(DASHBOARD_STATES.SURVEY_COMPLETED) && <Lock size={16} className="section-lock" />}
+            </div>
+
+            {!isStateAtLeast(DASHBOARD_STATES.SURVEY_COMPLETED) ? (
+              <div className="empty-state">
+                <div className="empty-icon">
+                  <Activity size={48} />
+                </div>
+                <h3>No insights available</h3>
+                <p>
+                  {isState(DASHBOARD_STATES.NO_DOCUMENT) && 'Upload study material to begin'}
+                  {isState(DASHBOARD_STATES.SURVEY_READY) && 'Complete survey to receive personalized insights'}
+                  {isState(DASHBOARD_STATES.DOCUMENT_UPLOADED) && 'Generate and complete survey to unlock insights'}
+                </p>
+              </div>
+            ) : (
+              <div className="insights-content">
+                {/* Study Guidance Card */}
+                {currentQuiz?.studyGuidance ? (
+                  <div className="study-guidance-card">
+                    <div className="guidance-header">
+                      <Lightbulb size={24} />
+                      <h3>Adaptive Study Guidance</h3>
                     </div>
-                    <div className="h-2 bg-gray-800 rounded-full overflow-hidden">
-                      <div className="h-full bg-blue-600" style={{ width: `${i * 30}%` }} />
+
+                    <div className="guidance-content">
+                      <div className="guidance-row">
+                        <div className="guidance-label">Learner Level</div>
+                        <div className="guidance-value level-badge">
+                          {currentQuiz.studyGuidance.learnerLevel}
+                        </div>
+                      </div>
+
+                      <div className="guidance-row">
+                        <div className="guidance-label">Priority Topics</div>
+                        <ul className="priority-topics-list">
+                          {currentQuiz.studyGuidance.priorityTopics.map((topic, index) => (
+                            <li key={index}>{topic}</li>
+                          ))}
+                        </ul>
+                      </div>
+
+                      <div className="guidance-row">
+                        <div className="guidance-label">Recommended Study Time</div>
+                        <div className="guidance-value">
+                          <Clock size={16} />
+                          {currentQuiz.studyGuidance.studyDuration}
+                        </div>
+                      </div>
+
+                      <div className="guidance-action">
+                        <div className="guidance-label">Next Action</div>
+                        <p className="next-action-text">{currentQuiz.studyGuidance.nextAction}</p>
+                      </div>
                     </div>
                   </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {activeScreen === 'my-progress' && (
-            <div>
-              <div className="mb-6">
-                <h1 className="text-2xl font-semibold">My Progress</h1>
-                <p className="text-sm text-gray-400">Track your learning achievements</p>
-              </div>
-              <div className="grid grid-cols-3 gap-4 mb-6">
-                {[{ label: 'Quizzes Taken', value: '12' }, { label: 'Avg Score', value: '78%' }, { label: 'Time Spent', value: '8h' }].map((stat, i) => (
-                  <div key={i} className="bg-gray-900 border border-gray-800 rounded-lg p-6 text-center">
-                    <div className="text-3xl font-semibold mb-2">{stat.value}</div>
-                    <div className="text-sm text-gray-400">{stat.label}</div>
-                  </div>
-                ))}
-              </div>
-              <div className="bg-gray-900 border border-gray-800 rounded-lg p-6">
-                <div className="text-base font-semibold mb-4">Recent Activity</div>
-                <div className="space-y-3">
-                  {['Completed Python Quiz', 'Earned 50 XP', 'Unlocked Badge'].map((activity, i) => (
-                    <div key={i} className="flex justify-between items-center py-2 border-b border-gray-800 last:border-0">
-                      <span className="text-sm text-gray-300">{activity}</span>
-                      <span className="text-xs text-gray-500">2h ago</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          )}
-
-          {activeScreen === 'ai-tutor' && (
-            <div>
-              <div className="mb-6">
-                <h1 className="text-2xl font-semibold">AI Tutor</h1>
-                <p className="text-sm text-gray-400">Get personalized help from AI</p>
-              </div>
-              <div className="bg-gray-900 border border-gray-800 rounded-lg p-6 h-96 flex flex-col">
-                <div className="flex-1 mb-4 space-y-3">
-                  <div className="bg-gray-800 rounded-lg p-4 max-w-md">
-                    <p className="text-sm">Hello! How can I help you today?</p>
-                  </div>
-                </div>
-                <div className="flex gap-2">
-                  <input type="text" placeholder="Ask me anything..." className="flex-1 px-4 py-2 bg-gray-800 border border-gray-700 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-600" />
-                  <button className="px-6 py-2 bg-blue-600 text-white text-sm font-medium rounded-md hover:bg-blue-500 transition">Send</button>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {activeScreen === 'challenges' && (
-            <div>
-              <div className="mb-6">
-                <h1 className="text-2xl font-semibold">Challenges</h1>
-                <p className="text-sm text-gray-400">Complete challenges to earn rewards</p>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                {['Daily Challenge', 'Weekly Challenge', 'Monthly Challenge', 'Special Event'].map((challenge, i) => (
-                  <div key={i} className="bg-gray-900 border border-gray-800 rounded-lg p-6 hover:border-blue-600 transition cursor-pointer">
-                    <div className="text-base font-semibold mb-2">{challenge}</div>
-                    <p className="text-sm text-gray-400 mb-4">Complete 5 quizzes</p>
-                    <div className="flex justify-between items-center">
-                      <span className="text-xs text-gray-500">3/5 Complete</span>
-                      <span className="text-sm text-blue-500 font-medium">+100 XP</span>
+                ) : (
+                  <div className="insight-card">
+                    <Sparkles size={20} />
+                    <div>
+                      <h4>Prerequisite Assessment Complete</h4>
+                      <p>
+                        {isState(DASHBOARD_STATES.SURVEY_COMPLETED) && 'Generating personalized study guidance...'}
+                        {isState(DASHBOARD_STATES.QUIZ_IN_PROGRESS) && 'Adaptive learning in progress. Insights will update as you answer questions.'}
+                        {isState(DASHBOARD_STATES.QUIZ_COMPLETED) && 'Quiz complete! View detailed performance analysis in results.'}
+                      </p>
                     </div>
                   </div>
-                ))}
+                )}
               </div>
-            </div>
-          )}
+            )}
+          </div>
 
-          {activeScreen === 'rewards' && (
-            <div>
-              <div className="mb-6">
-                <h1 className="text-2xl font-semibold">Rewards</h1>
-                <p className="text-sm text-gray-400">Your earned badges and achievements</p>
-              </div>
-              <div className="grid grid-cols-4 gap-4">
-                {['First Quiz', 'Week Streak', 'Top Scorer', 'Fast Learner', 'Night Owl', 'Consistent', 'Explorer', 'Master'].map((badge, i) => (
-                  <div key={i} className="bg-gray-900 border border-gray-800 rounded-lg p-6 text-center hover:border-blue-600 transition cursor-pointer">
-                    <div className="w-16 h-16 bg-gray-800 rounded-full mx-auto mb-3 flex items-center justify-center text-xl font-bold">{i < 3 ? '★' : '○'}</div>
-                    <div className="text-sm font-medium">{badge}</div>
-                  </div>
-                ))}
-              </div>
+          {/* Section 3: Quiz Actions */}
+          <div className="dashboard-section dashboard-section-primary">
+            <div className="section-header">
+              <Target size={24} />
+              <h2>Quiz Actions</h2>
             </div>
-          )}
 
-          {activeScreen === 'swot-report' && (
-            <div>
-              <div className="mb-6">
-                <h1 className="text-2xl font-semibold">SWOT Report</h1>
-                <p className="text-sm text-gray-400">Detailed analysis of your learning</p>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                {[
-                  { title: 'Strengths', items: ['Quick learner', 'Strong basics', 'Consistent practice'] },
-                  { title: 'Weaknesses', items: ['Time management', 'Advanced topics', 'Test anxiety'] },
-                  { title: 'Opportunities', items: ['New courses', 'Study groups', 'Advanced modules'] },
-                  { title: 'Threats', items: ['Inconsistency', 'Distractions', 'Burnout risk'] },
-                ].map((section, i) => (
-                  <div key={i} className="bg-gray-900 border border-gray-800 rounded-lg p-6">
-                    <div className="text-base font-semibold mb-4">{section.title}</div>
-                    <ul className="space-y-2">
-                      {section.items.map((item, j) => (
-                        <li key={j} className="text-sm text-gray-400">{item}</li>
-                      ))}
-                    </ul>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
+            <div className="quiz-actions-content">
 
-          {activeScreen === 'settings' && (
-            <div>
-              <div className="mb-6">
-                <h1 className="text-2xl font-semibold">Settings</h1>
-                <p className="text-sm text-gray-400">Manage your account and preferences</p>
-              </div>
-              <div className="space-y-4">
-                {['Profile Settings', 'Notification Preferences', 'Privacy Settings', 'Account Security'].map((setting, i) => (
-                  <div key={i} className="bg-gray-900 border border-gray-800 rounded-lg p-6 flex justify-between items-center hover:border-gray-700 transition cursor-pointer">
-                    <div className="text-base font-medium">{setting}</div>
-                    <div className="text-gray-500">→</div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
+              {/* STATE 1 & 2: Upload Document */}
+              {(isState(DASHBOARD_STATES.NO_DOCUMENT) || isState(DASHBOARD_STATES.DOCUMENT_UPLOADED)) && (
+                <>
+                  <label htmlFor="file-upload" className="upload-area-compact">
+                    <div className="upload-content-compact">
+                      <div className="upload-icon-wrapper">
+                        {isProcessing ? (
+                          <Loader2 className="processing-spinner" size={32} />
+                        ) : selectedFile ? (
+                          <FileText className="file-icon" size={32} />
+                        ) : (
+                          <Upload className="upload-icon-main" size={32} />
+                        )}
+                      </div>
+                      <div className="upload-text-wrapper">
+                        <p className="upload-text-compact">
+                          {isProcessing
+                            ? 'Processing document...'
+                            : selectedFile
+                              ? selectedFile.name
+                              : 'Upload Document'}
+                        </p>
+                        <small className="upload-hint">
+                          {selectedFile
+                            ? `${(selectedFile.size / 1024).toFixed(1)} KB`
+                            : 'PDF or TXT • Max 10MB'}
+                        </small>
+                      </div>
+                    </div>
+                    <input
+                      id="file-upload"
+                      type="file"
+                      accept=".pdf,.txt"
+                      onChange={handleFileSelect}
+                      disabled={isProcessing}
+                      style={{ display: 'none' }}
+                    />
+                  </label>
 
-          {(activeScreen === 'topic' || activeScreen === 'get-started-quiz') && step === 'topic' && (
-            <div>
-              <div className="mb-6">
-                <h1 className="text-2xl font-semibold">Start Your Learning Journey</h1>
-                <p className="text-sm text-gray-400">Choose a topic to begin assessment</p>
-              </div>
-              <div className="grid grid-cols-2 gap-4 mb-6">
-                {TOPICS.map(t => (
-                  <div
-                    key={t.id}
-                    onClick={() => setSelectedTopic(t.name)}
-                    className={`bg-gray-900 border rounded-lg p-4 cursor-pointer transition ${
-                      selectedTopic === t.name
-                        ? 'border-blue-600 ring-2 ring-blue-600'
-                        : 'border-gray-800 hover:ring-2 hover:ring-blue-600'
-                    }`}
+                  <button
+                    className="btn btn-primary btn-large btn-icon mt-md"
+                    onClick={handleUpload}
+                    disabled={!selectedFile || isProcessing}
                   >
-                    <div className="text-base font-semibold mb-1">{t.name}</div>
-                    <div className="text-sm text-gray-400">{t.desc}</div>
+                    <Sparkles size={20} />
+                    {isProcessing ? 'Generating...' : 'Generate Survey'}
+                  </button>
+
+                  {isState(DASHBOARD_STATES.NO_DOCUMENT) && (
+                    <p className="state-guidance mt-md">
+                      <AlertCircle size={16} />
+                      Upload study material to begin
+                    </p>
+                  )}
+                </>
+              )}
+
+              {/* STATE 2b: Survey Ready */}
+              {isState(DASHBOARD_STATES.SURVEY_READY) && (
+                <>
+                  <div className="state-status-card">
+                    <CheckCircle2 size={24} />
+                    <div>
+                      <h4>Survey Generated</h4>
+                      <p>Prerequisite assessment pending</p>
+                    </div>
                   </div>
-                ))}
+
+                  {/* Topic-Wise Summary */}
+                  {currentQuiz?.topicSummary && currentQuiz.topicSummary.length > 0 && (
+                    <div className="topic-summary-container mt-lg">
+                      <div className="topic-summary-header">
+                        <BookOpen size={20} />
+                        <h3>Document Overview</h3>
+                      </div>
+                      <p className="topic-summary-subtitle">
+                        Key topics covered in this material
+                      </p>
+                      <div className="topics-grid">
+                        {currentQuiz.topicSummary.map((topic, index) => (
+                          <div key={index} className="topic-card">
+                            <div className="topic-number">{index + 1}</div>
+                            <h4 className="topic-title">{topic.title}</h4>
+                            <p className="topic-summary">{topic.summary}</p>
+                            {topic.keyPoints && topic.keyPoints.length > 0 && (
+                              <ul className="topic-points">
+                                {topic.keyPoints.map((point, i) => (
+                                  <li key={i}>{point}</li>
+                                ))}
+                              </ul>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  <button
+                    className="btn btn-primary btn-large btn-icon mt-md"
+                    onClick={handleStartSurvey}
+                  >
+                    <Target size={20} />
+                    Start Survey
+                  </button>
+                </>
+              )}
+
+              {/* STATE 3: Survey Completed */}
+              {isState(DASHBOARD_STATES.SURVEY_COMPLETED) && (
+                <>
+                  <div className="state-status-card success">
+                    <CheckCircle2 size={24} />
+                    <div>
+                      <h4>Survey Complete</h4>
+                      <p>Baseline established • Ready for adaptive quiz</p>
+                    </div>
+                  </div>
+                  <button
+                    className="btn btn-primary btn-large btn-icon mt-md"
+                    onClick={handleStartAdaptiveQuiz}
+                  >
+                    <Play size={20} />
+                    Start Adaptive Quiz
+                  </button>
+                </>
+              )}
+
+              {/* STATE 4: Quiz In Progress */}
+              {isState(DASHBOARD_STATES.QUIZ_IN_PROGRESS) && (
+                <>
+                  <div className="state-status-card progress">
+                    <Loader2 className="processing-spinner" size={24} />
+                    <div>
+                      <h4>Quiz In Progress</h4>
+                      <p>
+                        {currentQuiz && currentQuiz.userAnswers
+                          ? `${Object.keys(currentQuiz.userAnswers).length}/${currentQuiz.questions.length} questions answered`
+                          : 'Continue where you left off'}
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    className="btn btn-primary btn-large btn-icon mt-md"
+                    onClick={handleContinueQuiz}
+                  >
+                    <Play size={20} />
+                    Continue Quiz
+                  </button>
+                </>
+              )}
+
+              {/* STATE 5: Quiz Completed */}
+              {isState(DASHBOARD_STATES.QUIZ_COMPLETED) && (
+                <>
+                  <div className="state-status-card success">
+                    <Award size={24} />
+                    <div>
+                      <h4>Quiz Complete</h4>
+                      <p>View your performance analysis</p>
+                    </div>
+                  </div>
+                  <button
+                    className="btn btn-secondary btn-large btn-icon mt-md"
+                    onClick={() => navigate('/progress')}
+                  >
+                    <BarChart3 size={20} />
+                    View Results
+                  </button>
+                  <button
+                    className="btn btn-primary btn-large btn-icon mt-sm"
+                    onClick={handleStartAdaptiveQuiz}
+                  >
+                    <Play size={20} />
+                    Start New Quiz
+                  </button>
+                </>
+              )}
+
+              {/* Start New Document - Visible when session is active */}
+              {!isState(DASHBOARD_STATES.NO_DOCUMENT) && (
+                <div className="new-document-divider">
+                  <button
+                    className="btn btn-secondary btn-outline btn-icon mt-xl"
+                    onClick={handleStartNewDocument}
+                    disabled={isProcessing}
+                  >
+                    <RefreshCw size={18} />
+                    Start New Document
+                  </button>
+                </div>
+              )}
+
+            </div>
+          </div>
+
+          {/* Section 4: Performance Analysis */}
+          <div className={`dashboard-section ${isStateAtLeast(DASHBOARD_STATES.SURVEY_COMPLETED) ? 'section-unlocked' : ''}`}>
+            <div className="section-header">
+              <BarChart3 size={24} />
+              <h2>Performance Analysis</h2>
+              {isStateAtLeast(DASHBOARD_STATES.SURVEY_COMPLETED) && <span className="section-badge">Active</span>}
+              {!isStateAtLeast(DASHBOARD_STATES.SURVEY_COMPLETED) && <Lock size={16} className="section-lock" />}
+            </div>
+
+            {!isStateAtLeast(DASHBOARD_STATES.SURVEY_COMPLETED) ? (
+              <div className="empty-state">
+                <div className="empty-icon">
+                  <BarChart3 size={48} />
+                </div>
+                <h3>No performance data</h3>
+                <p>
+                  {isState(DASHBOARD_STATES.NO_DOCUMENT) && 'Upload study material to begin'}
+                  {isState(DASHBOARD_STATES.SURVEY_READY) && 'Quiz results and performance metrics will appear here'}
+                  {isState(DASHBOARD_STATES.DOCUMENT_UPLOADED) && 'Complete survey to unlock performance tracking'}
+                </p>
               </div>
+            ) : (
+              <div className="performance-content">
+                <div className="performance-card">
+                  <Award size={24} />
+                  <div>
+                    <h4>
+                      {isState(DASHBOARD_STATES.SURVEY_COMPLETED) && 'Baseline Established'}
+                      {isState(DASHBOARD_STATES.QUIZ_IN_PROGRESS) && 'Quiz In Progress'}
+                      {isState(DASHBOARD_STATES.QUIZ_COMPLETED) && 'Performance Ready'}
+                    </h4>
+                    <p>
+                      {isState(DASHBOARD_STATES.SURVEY_COMPLETED) && 'Performance tracking is now active. Start adaptive quiz to see metrics.'}
+                      {isState(DASHBOARD_STATES.QUIZ_IN_PROGRESS) && 'Performance metrics will update as you complete the quiz.'}
+                      {isState(DASHBOARD_STATES.QUIZ_COMPLETED) && 'View detailed analysis in the results page.'}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
+        </div>
+
+        {/* Gamification Section */}
+        <div className="mt-2xl">
+          <Gamification />
+        </div>
+
+        {/* Info Section */}
+        <div className="info-section mt-2xl">
+          <div className="info-box">
+            <div className="info-box-header">
+              <Sparkles size={20} />
+              <strong>Current Status: {dashboardState.replace(/_/g, ' ')}</strong>
+            </div>
+            <ol className="info-list">
+              {isState(DASHBOARD_STATES.NO_DOCUMENT) && (
+                <>
+                  <li>✓ Upload your study document (PDF or TXT format)</li>
+                  <li>○ AI will generate 5 prerequisite questions</li>
+                  <li>○ Complete the survey to assess baseline knowledge</li>
+                  <li>○ Dashboard sections will unlock with insights</li>
+                </>
+              )}
+              {isState(DASHBOARD_STATES.SURVEY_READY) && (
+                <>
+                  <li>✓ Document uploaded and analyzed</li>
+                  <li>✓ Prerequisite survey generated</li>
+                  <li>→ Complete the survey to establish baseline</li>
+                  <li>○ Unlock adaptive learning features</li>
+                </>
+              )}
+              {isState(DASHBOARD_STATES.SURVEY_COMPLETED) && (
+                <>
+                  <li>✓ Document uploaded</li>
+                  <li>✓ Prerequisite survey completed</li>
+                  <li>✓ Baseline knowledge established</li>
+                  <li>→ Start adaptive quiz for personalized learning</li>
+                </>
+              )}
+              {isState(DASHBOARD_STATES.QUIZ_IN_PROGRESS) && (
+                <>
+                  <li>✓ Baseline established</li>
+                  <li>→ Quiz in progress - continue answering</li>
+                  <li>○ Complete quiz to see performance analysis</li>
+                  <li>○ Unlock detailed insights and recommendations</li>
+                </>
+              )}
+              {isState(DASHBOARD_STATES.QUIZ_COMPLETED) && (
+                <>
+                  <li>✓ Baseline established</li>
+                  <li>✓ Quiz completed</li>
+                  <li>→ View performance analysis and SWOT insights</li>
+                  <li>○ Start new quiz for continued learning</li>
+                </>
+              )}
+            </ol>
+          </div>
+        </div>
+
+      </div>
+
+      {/* Confirmation Modal for New Document */}
+      {showNewDocModal && (
+        <div className="modal-overlay" onClick={handleCancelNewDocument}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3>Start a new document?</h3>
               <button
-                onClick={startQuiz}
-                disabled={!selectedTopic}
-                className="px-6 py-2.5 bg-blue-600 text-white text-sm font-medium rounded-md disabled:opacity-40 disabled:cursor-not-allowed hover:bg-blue-500 transition"
+                className="modal-close"
+                onClick={handleCancelNewDocument}
+                aria-label="Close"
               >
-                Start Assessment
+                <X size={20} />
               </button>
             </div>
-          )}
-
-          {step === 'quiz' && (
-            <div className="max-w-xl mx-auto">
-              <div className="mb-6">
-                <div className="text-xs uppercase tracking-wide text-gray-500 mb-3">Topic: {selectedTopic}</div>
-                <div className="flex items-center gap-4">
-                  <div className="text-sm text-gray-400">Question {currentQ + 1} of {QUESTIONS.length}</div>
-                  <div className="flex-1 h-2 bg-gray-800 rounded-full overflow-hidden">
-                    <div className="h-full bg-blue-600 transition-all" style={{ width: `${((currentQ + 1) / QUESTIONS.length) * 100}%` }} />
-                  </div>
-                </div>
-              </div>
-              <div className="bg-gray-900 border border-gray-800 rounded-lg p-6 mb-6">
-                <div className="text-xl font-medium mb-6">{QUESTIONS[currentQ].q}</div>
-                <div className="space-y-3">
-                  {QUESTIONS[currentQ].opts.map((opt, i) => (
-                    <button
-                      key={i}
-                      onClick={() => selectOption(opt)}
-                      className={`w-full text-left px-5 py-4 rounded-lg border transition text-sm ${
-                        selected === opt
-                          ? 'bg-gray-800 border-blue-600 ring-2 ring-blue-600'
-                          : 'bg-gray-900 border-gray-800 hover:border-gray-700 hover:bg-gray-800/50'
-                      }`}
-                    >
-                      {opt}
-                    </button>
-                  ))}
-                </div>
-              </div>
-              <div className="flex justify-between">
-                <button
-                  onClick={prevQ}
-                  disabled={currentQ === 0}
-                  className="px-6 py-2.5 border border-gray-700 text-gray-300 text-sm font-medium rounded-md disabled:opacity-40 disabled:cursor-not-allowed hover:bg-gray-800 transition"
-                >
-                  Previous
-                </button>
-                <button
-                  onClick={nextQ}
-                  disabled={!selected}
-                  className="px-6 py-2.5 bg-blue-600 text-white text-sm font-medium rounded-md disabled:opacity-40 disabled:cursor-not-allowed hover:bg-blue-500 transition"
-                >
-                  {currentQ === QUESTIONS.length - 1 ? 'Submit Quiz' : 'Next'}
-                </button>
+            <div className="modal-body">
+              <p>Your current session will be saved and you can return to it later.</p>
+              <div className="modal-info">
+                <AlertCircle size={16} />
+                <span>All progress, survey results, and quiz attempts will be preserved.</span>
               </div>
             </div>
-          )}
-
-          {step === 'result' && (
-            <div className="max-w-xl mx-auto">
-              <div className="bg-gray-900 border border-gray-800 rounded-lg p-12 text-center mb-6">
-                <div className="text-6xl font-semibold mb-3">{score}%</div>
-                <div className="text-sm text-gray-400 mb-6">Your Score</div>
-                <div className="inline-block px-4 py-1.5 bg-gray-800 text-gray-200 rounded-md text-sm">
-                  Level: {level}
-                </div>
-              </div>
-              <div className="bg-gray-900 border border-gray-800 rounded-lg p-6 mb-6">
-                <div className="text-base font-semibold mb-4">What's next?</div>
-                <ul className="space-y-2 text-sm text-gray-400">
-                  <li>Review your weak areas with AI-generated study materials</li>
-                  <li>Practice with adaptive quizzes tailored to your level</li>
-                  <li>Track your progress and earn rewards as you improve</li>
-                </ul>
-              </div>
-              <button onClick={reset} className="px-6 py-2.5 bg-blue-600 text-white text-sm font-medium rounded-md hover:bg-blue-500 transition">
-                Retake Quiz
+            <div className="modal-actions">
+              <button
+                className="btn btn-secondary"
+                onClick={handleCancelNewDocument}
+                disabled={isProcessing}
+              >
+                Cancel
+              </button>
+              <button
+                className="btn btn-primary btn-icon"
+                onClick={handleConfirmNewDocument}
+                disabled={isProcessing}
+              >
+                {isProcessing ? (
+                  <>
+                    <Loader2 className="processing-spinner" size={18} />
+                    Archiving...
+                  </>
+                ) : (
+                  <>
+                    <RefreshCw size={18} />
+                    Start New
+                  </>
+                )}
               </button>
             </div>
-          )}
+          </div>
         </div>
-      </div>
+      )}
 
-      {/* Right Panel */}
-      <div className="bg-gray-900 border-l border-gray-800 p-4 space-y-4 overflow-y-auto">
-        {/* Gamification */}
-        <div className="rounded-lg border border-gray-800 bg-gray-900/70 p-4 hover:border-gray-700 transition cursor-pointer">
-          <div className="text-sm font-medium text-gray-200 mb-4">Progress</div>
-          <div className="mb-4">
-            <div className="flex justify-between text-xs text-gray-400 mb-2">
-              <span>Level 3</span>
-              <span>320/500 XP</span>
-            </div>
-            <div className="h-2 bg-gray-800 rounded-full overflow-hidden">
-              <div className="h-full bg-blue-600" style={{ width: '64%' }} />
-            </div>
-          </div>
-          <div className="grid grid-cols-2 gap-3 mb-4">
-            <div>
-              <div className="text-xs text-gray-500 mb-1">Coins</div>
-              <div className="text-xl font-semibold">120</div>
-            </div>
-            <div>
-              <div className="text-xs text-gray-500 mb-1">Streak</div>
-              <div className="text-xl font-semibold">5</div>
-            </div>
-          </div>
-          <button className="w-full py-2 border border-gray-700 text-gray-300 text-sm font-medium rounded-md hover:bg-gray-800 transition">
-            View Rewards
-          </button>
-        </div>
-
-        {/* SWOT */}
-        <div className="rounded-lg border border-gray-800 bg-gray-900/70 p-4 hover:border-gray-700 transition cursor-pointer" onClick={() => { setActiveMenu('SWOT Report'); setActiveScreen('swot-report'); }}>
-          <div className="text-sm font-medium text-gray-200 mb-4">SWOT Analysis</div>
-          <div className="grid grid-cols-2 gap-3">
-            {[
-              { title: 'Strength', text: 'Strong in basics' },
-              { title: 'Weakness', text: 'Time management' },
-              { title: 'Opportunity', text: 'Advanced topics' },
-              { title: 'Threat', text: 'Consistency needed' },
-            ].map((item, i) => (
-              <div key={i} className="bg-gray-800 p-3 rounded-md text-xs">
-                <div className="font-medium text-gray-300 mb-1">{item.title}</div>
-                <div className="text-gray-500">{item.text}</div>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Stats */}
-        <div className="rounded-lg border border-gray-800 bg-gray-900/70 p-4 hover:border-gray-700 transition cursor-pointer" onClick={() => { setActiveMenu('My Progress'); setActiveScreen('my-progress'); }}>
-          <div className="text-sm font-medium text-gray-200 mb-4">Statistics</div>
-          <div className="space-y-3 text-sm">
-            <div className="flex justify-between">
-              <span className="text-gray-400">Sessions</span>
-              <span className="text-white font-medium">8</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-gray-400">Avg Accuracy</span>
-              <span className="text-white font-medium">76%</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-gray-400">Time Learned</span>
-              <span className="text-white font-medium">3h 20m</span>
-            </div>
-          </div>
-        </div>
-      </div>
     </div>
   )
 }

@@ -1,178 +1,352 @@
+import { useEffect, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
+import { analyzeQuizResults } from '../services/geminiService'
+import {
+  ArrowLeft,
+  TrendingUp,
+  Target,
+  Award,
+  AlertCircle,
+  CheckCircle2,
+  XCircle,
+  BarChart3,
+  Brain,
+  Sun,
+  Moon
+} from 'lucide-react'
+
 function Progress() {
-  const sampleData = [
-    { date: '2024-01-15', score: 95, topic: 'React Hooks', questions: 10 },
-    { date: '2024-01-14', score: 87, topic: 'JavaScript ES6', questions: 15 },
-    { date: '2024-01-13', score: 78, topic: 'CSS Flexbox', questions: 12 },
-    { date: '2024-01-12', score: 92, topic: 'HTML Semantics', questions: 8 },
-    { date: '2024-01-11', score: 85, topic: 'Web APIs', questions: 14 }
-  ]
+  const [results, setResults] = useState(null)
+  const [swotAnalysis, setSwotAnalysis] = useState(null)
+  const [loadingSwot, setLoadingSwot] = useState(false)
+  const navigate = useNavigate()
 
-  const averageScore = Math.round(sampleData.reduce((acc, item) => acc + item.score, 0) / sampleData.length)
-  const totalQuizzes = sampleData.length
+  // Theme management
+  const [theme, setTheme] = useState(() => {
+    return localStorage.getItem('theme') || 'dark'
+  })
 
-  const getScoreColor = (score) => {
-    if (score >= 90) return 'var(--nb-success)'
-    if (score >= 75) return 'var(--nb-accent)'
-    return 'var(--nb-warning)'
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', theme)
+    localStorage.setItem('theme', theme)
+  }, [theme])
+
+  const toggleTheme = () => {
+    setTheme(prevTheme => prevTheme === 'dark' ? 'light' : 'dark')
   }
 
-  return (
-    <div>
-      <div className="nb-mb-xl" style={{
-        padding: 'var(--nb-space-xl) 0',
-        borderBottom: '1px solid var(--nb-border)'
-      }}>
-        <h1 className="nb-h1" style={{ fontSize: '36px', marginBottom: '8px' }}>
-          📊 Learning Progress
-        </h1>
-        <p className="nb-text" style={{ fontSize: '16px' }}>
-          Track your quiz performance and learning journey
-        </p>
-      </div>
+  useEffect(() => {
+    const storedResults = localStorage.getItem('quizResults')
+    if (storedResults) {
+      const parsedResults = JSON.parse(storedResults)
+      setResults(parsedResults)
 
-      <div className="nb-card nb-mb-lg" style={{ marginTop: 'var(--nb-space-xl)' }}>
-        <div className="nb-card-title" style={{ fontSize: '24px' }}>Performance Summary</div>
-        <div className="nb-card-subtitle" style={{ fontSize: '15px' }}>Your overall learning statistics</div>
+      // Generate AI SWOT analysis
+      generateSwotAnalysis(parsedResults)
+    }
+  }, [])
 
-        <div className="nb-grid nb-grid-3 nb-gap-lg" style={{ marginTop: 'var(--nb-space-xl)' }}>
-          <div style={{
-            textAlign: 'center',
-            padding: 'var(--nb-space-xl)',
-            background: 'rgba(66, 133, 244, 0.05)',
-            borderRadius: 'var(--nb-radius-lg)',
-            border: '1px solid rgba(66, 133, 244, 0.15)'
-          }}>
-            <div style={{ fontSize: '48px', fontWeight: '800', color: 'var(--nb-accent)', marginBottom: '12px' }}>
-              {averageScore}%
+  const generateSwotAnalysis = async (resultsData) => {
+    setLoadingSwot(true)
+    try {
+      const swot = await analyzeQuizResults(
+        resultsData.questions,
+        resultsData.answers,
+        resultsData.score,
+        resultsData.total
+      )
+      setSwotAnalysis(swot)
+    } catch (error) {
+      console.error('Error generating SWOT:', error)
+      // Use fallback SWOT based on actual performance
+      const accuracy = resultsData.accuracy
+      setSwotAnalysis({
+        strength: accuracy >= 70 ? 'Strong understanding of core concepts demonstrated through quiz performance' : 'Willingness to engage with learning material and complete assessments',
+        weakness: accuracy >= 70 ? 'Minor gaps in advanced topics that could benefit from review' : 'Fundamental concepts need reinforcement based on quiz results',
+        opportunity: accuracy >= 70 ? 'Ready for more challenging material and advanced topics' : 'Significant room for growth through focused study and practice',
+        threat: accuracy >= 70 ? 'Risk of overconfidence - maintain consistent study habits' : 'May fall behind without dedicated focus on weak areas'
+      })
+    } finally {
+      setLoadingSwot(false)
+    }
+  }
+
+  // Show empty state if no quiz attempted
+  if (!results) {
+    return (
+      <div className="results-page fade-in">
+        <div className="results-container">
+          <div className="empty-results-state">
+            <div className="empty-results-icon">
+              <BarChart3 size={64} />
             </div>
-            <div style={{ fontSize: '14px', color: 'var(--nb-text-muted)', fontWeight: '500' }}>Average Score</div>
-          </div>
-          <div style={{
-            textAlign: 'center',
-            padding: 'var(--nb-space-xl)',
-            background: 'rgba(52, 168, 83, 0.05)',
-            borderRadius: 'var(--nb-radius-lg)',
-            border: '1px solid rgba(52, 168, 83, 0.15)'
-          }}>
-            <div style={{ fontSize: '48px', fontWeight: '800', color: 'var(--nb-success)', marginBottom: '12px' }}>
-              {totalQuizzes}
-            </div>
-            <div style={{ fontSize: '14px', color: 'var(--nb-text-muted)', fontWeight: '500' }}>Quizzes Completed</div>
-          </div>
-          <div style={{
-            textAlign: 'center',
-            padding: 'var(--nb-space-xl)',
-            background: 'rgba(251, 188, 4, 0.05)',
-            borderRadius: 'var(--nb-radius-lg)',
-            border: '1px solid rgba(251, 188, 4, 0.15)'
-          }}>
-            <div style={{ fontSize: '48px', fontWeight: '800', color: 'var(--nb-warning)', marginBottom: '12px' }}>
-              5
-            </div>
-            <div style={{ fontSize: '14px', color: 'var(--nb-text-muted)', fontWeight: '500' }}>Day Streak 🔥</div>
-          </div>
-        </div>
-
-        <div style={{
-          marginTop: 'var(--nb-space-2xl)',
-          padding: 'var(--nb-space-xl)',
-          background: averageScore >= 85 ? 'rgba(52, 168, 83, 0.08)' : 'rgba(251, 188, 4, 0.08)',
-          borderRadius: 'var(--nb-radius-lg)',
-          border: `1px solid ${averageScore >= 85 ? 'rgba(52, 168, 83, 0.2)' : 'rgba(251, 188, 4, 0.2)'}`,
-          textAlign: 'center'
-        }}>
-          <div style={{ fontWeight: '600', marginBottom: '8px', fontSize: '18px' }}>
-            {averageScore >= 85 ? '🎉 Excellent Progress!' : '💪 Keep Learning!'}
-          </div>
-          <div style={{ fontSize: '14px', color: 'var(--nb-text-secondary)', lineHeight: '1.5' }}>
-            {averageScore >= 85
-              ? 'You\'re mastering your topics with consistent high scores'
-              : 'Focus on reviewing concepts to improve your performance'
-            }
-          </div>
-        </div>
-      </div>
-
-      <div className="nb-card nb-mb-lg">
-        <div className="nb-card-title" style={{ fontSize: '20px' }}>Recent Activity</div>
-        <div className="nb-card-subtitle" style={{ fontSize: '15px' }}>Your latest quiz attempts and scores</div>
-
-        <div className="nb-flex-col nb-gap-sm" style={{ marginTop: 'var(--nb-space-xl)' }}>
-          {sampleData.map((item, index) => (
-            <div key={index} className="nb-flex nb-justify-between nb-items-center" style={{
-              padding: 'var(--nb-space-xl)',
-              background: 'var(--nb-glass)',
-              border: '1px solid var(--nb-border)',
-              borderRadius: 'var(--nb-radius-lg)',
-              transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-              cursor: 'pointer'
-            }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.borderColor = 'var(--nb-border-strong)'
-                e.currentTarget.style.transform = 'translateY(-2px)'
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.borderColor = 'var(--nb-border)'
-                e.currentTarget.style.transform = 'translateY(0)'
-              }}
+            <h2>No Quiz Results Yet</h2>
+            <p>Complete a quiz to see your performance analysis, scores, and AI-powered insights.</p>
+            <button
+              onClick={() => navigate('/dashboard')}
+              className="btn btn-primary btn-large btn-icon mt-xl"
             >
-              <div>
-                <div style={{ fontWeight: '600', marginBottom: '6px', fontSize: '15px' }}>{item.topic}</div>
-                <div style={{ fontSize: '13px', color: 'var(--nb-text-muted)' }}>
-                  {item.date} • {item.questions} questions
+              <ArrowLeft size={20} />
+              Go to Dashboard
+            </button>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  const { score, total, accuracy, documentName } = results
+  const correctCount = score
+  const wrongCount = total - score
+
+  // Determine performance level
+  const getPerformanceLevel = () => {
+    if (accuracy >= 90) return { text: 'Outstanding', icon: '🌟' }
+    if (accuracy >= 80) return { text: 'Excellent', icon: '🎉' }
+    if (accuracy >= 70) return { text: 'Good', icon: '👍' }
+    if (accuracy >= 60) return { text: 'Fair', icon: '📚' }
+    return { text: 'Needs Improvement', icon: '💪' }
+  }
+
+  const performanceLevel = getPerformanceLevel()
+
+  return (
+    <div className="results-page fade-in">
+      <div className="results-container">
+
+        {/* Minimal Header */}
+        <div className="results-header-minimal">
+          <button
+            onClick={() => navigate('/dashboard')}
+            className="btn-minimal"
+          >
+            <ArrowLeft size={20} />
+            Dashboard
+          </button>
+          <div className="results-meta">
+            <span className="results-badge">Quiz Results</span>
+            <button
+              onClick={toggleTheme}
+              className="theme-toggle"
+              aria-label="Toggle theme"
+              title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+            >
+              {theme === 'dark' ? <Sun size={20} /> : <Moon size={20} />}
+            </button>
+          </div>
+        </div>
+
+        {/* Document Info */}
+        <div className="results-document-info">
+          <h1>Performance Analysis</h1>
+          <p className="document-name">
+            <Brain size={16} />
+            {documentName}
+          </p>
+          <p className="completion-time">
+            Completed: {new Date(results.completedAt).toLocaleString()}
+          </p>
+        </div>
+
+        {/* Section 1: Score Summary */}
+        <div className="results-section">
+          <div className="section-header-results">
+            <Target size={24} />
+            <h2>Score & Accuracy</h2>
+          </div>
+
+          <div className="score-summary-grid">
+            {/* Score Card */}
+            <div className="score-card-main">
+              <div className="score-display-large">
+                <div className="score-number-large">{score}</div>
+                <div className="score-divider">/</div>
+                <div className="score-total">{total}</div>
+              </div>
+              <p className="score-label-main">Questions Correct</p>
+            </div>
+
+            {/* Accuracy Card */}
+            <div className="accuracy-card-main">
+              <div className="accuracy-circle">
+                <svg width="120" height="120" viewBox="0 0 120 120">
+                  <circle
+                    cx="60"
+                    cy="60"
+                    r="54"
+                    fill="none"
+                    stroke="var(--color-bg-elevated)"
+                    strokeWidth="8"
+                  />
+                  <circle
+                    cx="60"
+                    cy="60"
+                    r="54"
+                    fill="none"
+                    stroke="var(--color-text-primary)"
+                    strokeWidth="8"
+                    strokeDasharray={`${(accuracy / 100) * 339.292} 339.292`}
+                    strokeLinecap="round"
+                    transform="rotate(-90 60 60)"
+                  />
+                  <text
+                    x="60"
+                    y="60"
+                    textAnchor="middle"
+                    dy="0.3em"
+                    fontSize="28"
+                    fontWeight="700"
+                    fill="var(--color-text-primary)"
+                  >
+                    {accuracy}%
+                  </text>
+                </svg>
+              </div>
+              <p className="accuracy-label-main">Accuracy</p>
+              <div className="performance-badge-main">
+                <span className="performance-icon">{performanceLevel.icon}</span>
+                <span>{performanceLevel.text}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Section 2: Performance Charts */}
+        <div className="results-section">
+          <div className="section-header-results">
+            <BarChart3 size={24} />
+            <h2>Performance Charts</h2>
+          </div>
+
+          <div className="charts-grid">
+            {/* Answer Distribution */}
+            <div className="chart-card">
+              <h3 className="chart-title-minimal">Answer Distribution</h3>
+              <div className="bar-chart-container">
+                <div className="bar-chart-item">
+                  <div
+                    className="bar-chart-bar bar-correct"
+                    style={{ height: `${Math.max((correctCount / total) * 100, 10)}%` }}
+                  >
+                    <span className="bar-value">{correctCount}</span>
+                  </div>
+                  <div className="bar-chart-label">
+                    <CheckCircle2 size={16} />
+                    Correct
+                  </div>
+                </div>
+                <div className="bar-chart-item">
+                  <div
+                    className="bar-chart-bar bar-wrong"
+                    style={{ height: `${Math.max((wrongCount / total) * 100, 10)}%` }}
+                  >
+                    <span className="bar-value">{wrongCount}</span>
+                  </div>
+                  <div className="bar-chart-label">
+                    <XCircle size={16} />
+                    Wrong
+                  </div>
                 </div>
               </div>
-              <div style={{
-                padding: '8px 16px',
-                borderRadius: '20px',
-                fontWeight: '700',
-                fontSize: '14px',
-                background: getScoreColor(item.score),
-                color: 'white'
-              }}>
-                {item.score}%
+            </div>
+
+            {/* Accuracy Breakdown */}
+            <div className="chart-card">
+              <h3 className="chart-title-minimal">Accuracy Breakdown</h3>
+              <div className="accuracy-breakdown">
+                <div className="accuracy-stat">
+                  <span className="stat-label">Your Score</span>
+                  <span className="stat-value">{accuracy}%</span>
+                </div>
+                <div className="progress-bar-minimal">
+                  <div
+                    className="progress-fill-minimal"
+                    style={{ width: `${accuracy}%` }}
+                  />
+                </div>
+                <div className="benchmark-info">
+                  <div className="benchmark-line">
+                    <span>Benchmark: 70%</span>
+                    {accuracy >= 70 ? (
+                      <span className="benchmark-status success">
+                        +{accuracy - 70}% above
+                      </span>
+                    ) : (
+                      <span className="benchmark-status below">
+                        {70 - accuracy}% below
+                      </span>
+                    )}
+                  </div>
+                </div>
               </div>
             </div>
-          ))}
-        </div>
-      </div>
-
-      <div className="nb-card">
-        <div className="nb-card-title" style={{ fontSize: '20px' }}>🤖 AI Insights</div>
-        <div className="nb-card-subtitle" style={{ fontSize: '15px' }}>Personalized recommendations for improvement</div>
-
-        <div className="nb-grid nb-grid-2 nb-gap-lg" style={{ marginTop: 'var(--nb-space-xl)' }}>
-          <div style={{
-            padding: 'var(--nb-space-lg)',
-            background: 'rgba(52, 168, 83, 0.05)',
-            borderRadius: 'var(--nb-radius-md)',
-            border: '1px solid rgba(52, 168, 83, 0.1)'
-          }}>
-            <div style={{ fontWeight: '600', marginBottom: '12px', color: 'var(--nb-success)', fontSize: '16px' }}>
-              ✓ Strengths
-            </div>
-            <ul style={{ color: 'var(--nb-text-secondary)', fontSize: '14px', lineHeight: '1.8', paddingLeft: '20px', margin: 0 }}>
-              <li>Consistent performance in React concepts</li>
-              <li>Strong understanding of JavaScript fundamentals</li>
-              <li>Regular study habits</li>
-            </ul>
-          </div>
-          <div style={{
-            padding: 'var(--nb-space-lg)',
-            background: 'rgba(251, 188, 4, 0.05)',
-            borderRadius: 'var(--nb-radius-md)',
-            border: '1px solid rgba(251, 188, 4, 0.1)'
-          }}>
-            <div style={{ fontWeight: '600', marginBottom: '12px', color: 'var(--nb-warning)', fontSize: '16px' }}>
-              💡 Focus Areas
-            </div>
-            <ul style={{ color: 'var(--nb-text-secondary)', fontSize: '14px', lineHeight: '1.8', paddingLeft: '20px', margin: 0 }}>
-              <li>CSS layout techniques need more practice</li>
-              <li>Review advanced JavaScript concepts</li>
-              <li>Practice more system design questions</li>
-            </ul>
           </div>
         </div>
+
+        {/* Section 3: SWOT Analysis */}
+        <div className="results-section">
+          <div className="section-header-results">
+            <TrendingUp size={24} />
+            <h2>SWOT Analysis</h2>
+          </div>
+
+          {loadingSwot ? (
+            <div className="swot-loading">
+              <Brain className="loading-spinner" size={32} />
+              <p>Analyzing your performance with AI...</p>
+            </div>
+          ) : swotAnalysis ? (
+            <div className="swot-grid-minimal">
+              {/* Strengths */}
+              <div className="swot-card-minimal">
+                <div className="swot-header">
+                  <Award size={20} />
+                  <h4>Strengths</h4>
+                </div>
+                <p>{swotAnalysis.strength}</p>
+              </div>
+
+              {/* Weaknesses */}
+              <div className="swot-card-minimal">
+                <div className="swot-header">
+                  <AlertCircle size={20} />
+                  <h4>Weaknesses</h4>
+                </div>
+                <p>{swotAnalysis.weakness}</p>
+              </div>
+
+              {/* Opportunities */}
+              <div className="swot-card-minimal">
+                <div className="swot-header">
+                  <Target size={20} />
+                  <h4>Opportunities</h4>
+                </div>
+                <p>{swotAnalysis.opportunity}</p>
+              </div>
+
+              {/* Threats */}
+              <div className="swot-card-minimal">
+                <div className="swot-header">
+                  <AlertCircle size={20} />
+                  <h4>Threats</h4>
+                </div>
+                <p>{swotAnalysis.threat}</p>
+              </div>
+            </div>
+          ) : null}
+        </div>
+
+        {/* Action Buttons */}
+        <div className="results-actions">
+          <button
+            onClick={() => navigate('/dashboard')}
+            className="btn btn-primary btn-large btn-icon"
+          >
+            <ArrowLeft size={20} />
+            Back to Dashboard
+          </button>
+        </div>
+
       </div>
     </div>
   )

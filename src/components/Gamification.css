@@ -1,0 +1,305 @@
+/* ============================================
+   GAMIFICATION STYLES
+   Simple, clean design for XP, Badges, Leaderboard
+   ============================================ */
+
+.gamification-container {
+    width: 100%;
+    max-width: 800px;
+    margin: 0 auto;
+}
+
+.gamification-loading {
+    text-align: center;
+    padding: var(--spacing-xl);
+    color: var(--color-text-muted);
+    font-size: var(--text-sm);
+}
+
+/* XP Card */
+.xp-card {
+    background: var(--color-bg-card);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    padding: var(--spacing-lg);
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-md);
+    margin-bottom: var(--spacing-lg);
+}
+
+.xp-icon {
+    width: 48px;
+    height: 48px;
+    background: var(--color-accent-light);
+    color: var(--color-accent);
+    border-radius: var(--radius-lg);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.xp-info {
+    flex: 1;
+}
+
+.xp-label {
+    font-size: var(--text-xs);
+    font-weight: var(--font-semibold);
+    color: var(--color-text-muted);
+    text-transform: uppercase;
+    letter-spacing: var(--tracking-wider);
+    margin-bottom: 0.25rem;
+}
+
+.xp-value {
+    font-size: var(--text-2xl);
+    font-weight: var(--font-bold);
+    color: var(--color-text-primary);
+    letter-spacing: var(--tracking-tight);
+}
+
+.streak-info {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-xs);
+    padding: 0.5rem 0.75rem;
+    background: var(--color-bg-elevated);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+}
+
+.streak-icon {
+    font-size: 1.25rem;
+}
+
+.streak-value {
+    font-size: var(--text-sm);
+    font-weight: var(--font-medium);
+    color: var(--color-text-secondary);
+}
+
+/* Tabs */
+.gamification-tabs {
+    display: flex;
+    gap: var(--spacing-sm);
+    margin-bottom: var(--spacing-lg);
+    border-bottom: 1px solid var(--color-border);
+}
+
+.gamification-tabs .tab {
+    background: transparent;
+    border: none;
+    padding: var(--spacing-md) var(--spacing-lg);
+    font-size: var(--text-sm);
+    font-weight: var(--font-medium);
+    color: var(--color-text-muted);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-xs);
+    border-bottom: 2px solid transparent;
+    transition: all var(--transition-base);
+}
+
+.gamification-tabs .tab:hover {
+    color: var(--color-text-secondary);
+}
+
+.gamification-tabs .tab.active {
+    color: var(--color-text-primary);
+    border-bottom-color: var(--color-accent);
+}
+
+/* Badges Grid */
+.badges-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+    gap: var(--spacing-md);
+}
+
+.badge-card {
+    background: var(--color-bg-card);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    padding: var(--spacing-md);
+    text-align: center;
+    position: relative;
+    transition: all var(--transition-base);
+}
+
+.badge-card.earned {
+    border-color: var(--color-accent);
+    background: var(--color-bg-elevated);
+}
+
+.badge-card.locked {
+    opacity: 0.4;
+}
+
+.badge-card:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-sm);
+}
+
+.badge-icon {
+    font-size: 2.5rem;
+    margin-bottom: var(--spacing-sm);
+}
+
+.badge-name {
+    font-size: var(--text-sm);
+    font-weight: var(--font-semibold);
+    color: var(--color-text-primary);
+    margin-bottom: 0.25rem;
+}
+
+.badge-desc {
+    font-size: var(--text-xs);
+    color: var(--color-text-muted);
+    line-height: var(--leading-relaxed);
+}
+
+.badge-earned-mark {
+    position: absolute;
+    top: 0.5rem;
+    right: 0.5rem;
+    width: 20px;
+    height: 20px;
+    background: var(--color-accent);
+    color: #ffffff;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.75rem;
+    font-weight: bold;
+}
+
+/* Leaderboard */
+.leaderboard-container {
+    background: var(--color-bg-card);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+}
+
+.leaderboard-empty {
+    padding: var(--spacing-xl);
+    text-align: center;
+    color: var(--color-text-muted);
+    font-size: var(--text-sm);
+}
+
+.leaderboard-list {
+    display: flex;
+    flex-direction: column;
+}
+
+.leaderboard-item {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-md);
+    padding: var(--spacing-md) var(--spacing-lg);
+    border-bottom: 1px solid var(--color-border);
+    transition: background var(--transition-base);
+}
+
+.leaderboard-item:last-child {
+    border-bottom: none;
+}
+
+.leaderboard-item:hover {
+    background: var(--color-bg-elevated);
+}
+
+.leaderboard-rank {
+    font-size: var(--text-lg);
+    font-weight: var(--font-bold);
+    color: var(--color-text-secondary);
+    width: 40px;
+    text-align: center;
+    flex-shrink: 0;
+}
+
+.leaderboard-user {
+    flex: 1;
+}
+
+.leaderboard-name {
+    font-size: var(--text-base);
+    font-weight: var(--font-semibold);
+    color: var(--color-text-primary);
+    margin-bottom: 0.125rem;
+}
+
+.leaderboard-badges {
+    font-size: var(--text-xs);
+    color: var(--color-text-muted);
+}
+
+.leaderboard-xp {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    font-size: var(--text-sm);
+    font-weight: var(--font-semibold);
+    color: var(--color-accent);
+}
+
+/* Summary Pills (Header) */
+.gamification-summary {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-sm);
+    margin-right: var(--spacing-md);
+}
+
+.summary-pill {
+    display: flex;
+    align-items: center;
+    gap: 0.375rem;
+    padding: 0.375rem 0.75rem;
+    border-radius: var(--radius-full);
+    font-size: var(--text-xs);
+    font-weight: var(--font-semibold);
+    border: 1px solid transparent;
+}
+
+.xp-pill {
+    background: var(--color-accent-light);
+    color: var(--color-accent);
+    border-color: rgba(var(--color-accent-rgb), 0.2);
+}
+
+.level-pill {
+    background: var(--color-bg-elevated);
+    color: var(--color-text-primary);
+    border-color: var(--color-border);
+}
+
+.pill-icon {
+    flex-shrink: 0;
+}
+
+@media (max-width: 768px) {
+    .badges-grid {
+        grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+    }
+
+    .xp-card {
+        flex-direction: column;
+        text-align: center;
+    }
+
+    .streak-info {
+        width: 100%;
+        justify-content: center;
+    }
+
+    .gamification-summary {
+        display: none;
+        /* Hide on small mobile */
+    }
+}

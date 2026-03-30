@@ -1,5 +1,5 @@
-import { Routes, Route, useLocation, Navigate, useNavigate } from 'react-router-dom'
-import { signOut, onAuthStateChanged } from 'firebase/auth'
+import { Routes, Route, useLocation, Navigate } from 'react-router-dom'
+import { onAuthStateChanged } from 'firebase/auth'
 import { useEffect, useState } from 'react'
 import { auth } from './firebase'
 
@@ -7,82 +7,10 @@ import Landing from './pages/Landing'
 import Login from './pages/Login'
 import Signup from './pages/Signup'
 import VerifyEmail from './pages/VerifyEmail'
-import Dashboard from './pages/DashboardNew'
 import Quiz from './pages/Quiz'
 import Progress from './pages/Progress'
 import PrivacyPolicy from './pages/PrivacyPolicy'
-
-function Sidebar({ user }) {
-  const location = useLocation()
-  const navigate = useNavigate()
-
-  const handleLogout = () => {
-    signOut(auth)
-  }
-
-  const navItems = [
-    { path: '/dashboard', label: 'Dashboard' },
-    { path: '/quiz', label: 'Quiz' },
-    { path: '/progress', label: 'Progress' }
-  ]
-
-  return (
-    <div className="nb-sidebar">
-      <div className="nb-brand">
-        <span style={{ 
-          background: 'linear-gradient(135deg, #4285f4 0%, #34a853 100%)',
-          WebkitBackgroundClip: 'text',
-          WebkitTextFillColor: 'transparent',
-          fontWeight: '700',
-          fontSize: '28px',
-          letterSpacing: '-0.03em'
-        }}>AIVY</span>
-      </div>
-
-      <div className="nb-profile">
-        <div className="nb-profile-name">
-          {user?.displayName || user?.email?.split('@')[0]}
-        </div>
-        <div className="nb-profile-email">
-          {user?.email}
-        </div>
-      </div>
-
-      <nav className="nb-nav">
-        {navItems.map(item => (
-          <button
-            key={item.path}
-            onClick={() => navigate(item.path)}
-            className={`nb-nav-item ${location.pathname === item.path ? 'active' : ''}`}
-          >
-            {item.label}
-          </button>
-        ))}
-      </nav>
-
-      <button onClick={handleLogout} className="nb-nav-item" style={{ marginTop: 'auto' }}>
-        Logout
-      </button>
-    </div>
-  )
-}
-
-function AppLayout({ children, user }) {
-  return (
-    <div className="nb-app">
-      <Sidebar user={user} />
-      <div className="nb-main">
-        <div className="nb-content">
-          {children}
-        </div>
-      </div>
-    </div>
-  )
-}
-
-function AuthLayout({ children }) {
-  return children
-}
+import Dashboard from './pages/Dashboard'
 
 function App() {
   const [user, setUser] = useState(null)
@@ -98,15 +26,13 @@ function App() {
   }, [])
 
   if (loading) return (
-    <div className="nb-loading">
+    <div className="min-h-screen bg-gray-950 text-white flex items-center justify-center">
       Loading...
     </div>
   )
 
   const isAuthRoute = ['/login', '/signup'].includes(location.pathname)
   const isProtectedRoute = ['/dashboard', '/quiz', '/progress'].includes(location.pathname)
-  const isPublicRoute = ['/', '/privacy-policy'].includes(location.pathname)
-  const isVerifyRoute = location.pathname === '/verify-email'
 
   if (!user && isProtectedRoute) {
     return <Navigate to="/login" />
@@ -120,39 +46,12 @@ function App() {
     <Routes>
       <Route path="/" element={<Landing />} />
       <Route path="/privacy-policy" element={<PrivacyPolicy />} />
-      
-      <Route path="/login" element={
-        <AuthLayout>
-          <Login />
-        </AuthLayout>
-      } />
-
-      <Route path="/signup" element={
-        <AuthLayout>
-          <Signup />
-        </AuthLayout>
-      } />
-
-      <Route path="/verify-email" element={
-        <AuthLayout>
-          <VerifyEmail />
-        </AuthLayout>
-      } />
-
+      <Route path="/login" element={<Login />} />
+      <Route path="/signup" element={<Signup />} />
+      <Route path="/verify-email" element={<VerifyEmail />} />
       <Route path="/dashboard" element={<Dashboard />} />
-
-      <Route path="/quiz" element={
-        <AppLayout user={user}>
-          <Quiz />
-        </AppLayout>
-      } />
-
-      <Route path="/progress" element={
-        <AppLayout user={user}>
-          <Progress />
-        </AppLayout>
-      } />
-
+      <Route path="/quiz" element={<Quiz />} />
+      <Route path="/progress" element={<Progress />} />
       <Route path="*" element={<Navigate to="/" />} />
     </Routes>
   )

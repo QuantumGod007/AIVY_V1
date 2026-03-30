@@ -13,7 +13,9 @@
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",
-    "pdf-parse": "^2.4.5",
+    "firebase": "^11.1.0",
+    "lucide-react": "^0.563.0",
+    "pdfjs-dist": "^5.4.624",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "react-router-dom": "^6.30.2"
