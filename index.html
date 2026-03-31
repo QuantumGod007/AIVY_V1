@@ -11,6 +11,16 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap"
     rel="stylesheet">
   <title>AIVY - AI Learning Workspace</title>
+  <script>
+    // Restore path saved by 404.html for GitHub Pages SPA routing
+    (function () {
+      var redirect = sessionStorage.redirect;
+      delete sessionStorage.redirect;
+      if (redirect && redirect !== location.pathname) {
+        history.replaceState(null, null, redirect);
+      }
+    })();
+  </script>
 </head>
 
 <body>
