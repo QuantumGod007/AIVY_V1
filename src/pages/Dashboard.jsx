@@ -1,12 +1,13 @@
 import { useState, useEffect } from 'react'
 import { signOut } from 'firebase/auth'
 import { auth } from '../firebase'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, Link } from 'react-router-dom'
 import { extractTextFromFile } from '../services/pdfService'
 import { generatePrerequisiteSurvey, generateStudyGuidance, generateAdaptiveQuiz, generateTopicWiseSummary } from '../services/geminiService'
 import { saveCurrentQuiz, getCurrentQuiz, archiveCurrentSession } from '../services/storageService'
 import { initializeUserStats } from '../services/gamificationService'
 import Gamification from '../components/Gamification'
+import Sidebar from '../components/Sidebar'
 import GamificationSummary from '../components/GamificationSummary'
 import {
   Upload,
@@ -31,7 +32,11 @@ import {
   X,
   Lightbulb,
   Sun,
-  Moon
+  Moon,
+  MessageSquare,
+  CalendarDays,
+  CreditCard,
+  Trophy
 } from 'lucide-react'
 
 // Dashboard States
@@ -339,548 +344,260 @@ function Dashboard() {
   }
 
   return (
-    <div className="dashboard fade-in">
-      {/* Header */}
-      <div className="dashboard-header">
-        <div className="dashboard-header-content">
-          <div className="dashboard-greeting">
-            <h1 className="greeting-title">
-              <Brain size={28} />
-              Learning Dashboard
-            </h1>
-            <p className="greeting-subtitle">
-              Track your progress and adaptive learning insights
-            </p>
-          </div>
+    <div className="app-layout">
+    <Sidebar />
+    <div className="dashboard fade-in" style={{ flex: 1, minWidth: 0 }}>
 
-          <div className="dashboard-user">
-            <GamificationSummary />
-            <div className="user-avatar">
-              <User size={20} />
-            </div>
-            <button
-              onClick={toggleTheme}
-              className="theme-toggle"
-              aria-label="Toggle theme"
-              title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
-            >
-              {theme === 'dark' ? <Sun size={20} /> : <Moon size={20} />}
-            </button>
-            <button onClick={handleLogout} className="btn btn-secondary btn-icon">
-              <LogOut size={18} />
-              Logout
-            </button>
-          </div>
+      {/* Top Bar */}
+      <div className="db-topbar">
+        <div className="db-topbar-left">
+          <h1 className="db-title">Dashboard</h1>
+          <span className="db-state-pill">
+            {isState(DASHBOARD_STATES.NO_DOCUMENT) && 'Getting Started'}
+            {isState(DASHBOARD_STATES.SURVEY_READY) && 'Survey Ready'}
+            {isState(DASHBOARD_STATES.DOCUMENT_UPLOADED) && 'Document Loaded'}
+            {isState(DASHBOARD_STATES.SURVEY_COMPLETED) && 'Baseline Set'}
+            {isState(DASHBOARD_STATES.QUIZ_IN_PROGRESS) && 'Quiz Active'}
+            {isState(DASHBOARD_STATES.QUIZ_COMPLETED) && 'Quiz Done'}
+          </span>
+        </div>
+        <div className="db-topbar-right">
+          <GamificationSummary />
+          <button onClick={toggleTheme} className="theme-toggle" aria-label="Toggle theme">
+            {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
+          </button>
+          <div className="db-user-avatar"><User size={16} /></div>
+          <button onClick={handleLogout} className="btn btn-secondary btn-sm btn-icon">
+            <LogOut size={15} />Logout
+          </button>
         </div>
       </div>
 
-      {/* Main Content */}
-      <div className="dashboard-content">
+      {error && <div className="db-alert db-alert-error"><AlertCircle size={16}/><span>{error}</span></div>}
+      {success && !error && <div className="db-alert db-alert-success"><CheckCircle2 size={16}/><span>{success}</span></div>}
+      {isProcessing && <div className="db-alert db-alert-info"><Loader2 className="processing-spinner" size={16}/><span>{processingStage}</span></div>}
 
-        {/* Error/Success Messages */}
-        {error && (
-          <div className="alert alert-error slide-up mb-lg">
-            <AlertCircle size={20} />
-            <span>{error}</span>
-          </div>
-        )}
+      <div className="db-layout">
 
-        {success && !error && (
-          <div className="alert alert-success slide-up mb-lg">
-            <CheckCircle2 size={20} />
-            <span>{success}</span>
-          </div>
-        )}
+        {/* LEFT COLUMN */}
+        <div className="db-col-left">
 
-        {/* AI Processing State */}
-        {isProcessing && (
-          <div className="processing-banner slide-up mb-lg">
-            <Loader2 className="processing-spinner" size={20} />
-            <span>{processingStage}</span>
-          </div>
-        )}
-
-        {/* Dashboard Grid Layout */}
-        <div className="dashboard-grid">
-
-          {/* Section 1: Learning Overview */}
-          <div className={`dashboard-section ${isStateAtLeast(DASHBOARD_STATES.SURVEY_COMPLETED) ? 'section-unlocked' : ''}`}>
-            <div className="section-header">
-              <BookOpen size={24} />
-              <h2>Learning Overview</h2>
-              {isStateAtLeast(DASHBOARD_STATES.SURVEY_COMPLETED) && <span className="section-badge">Active</span>}
-              {!isStateAtLeast(DASHBOARD_STATES.SURVEY_COMPLETED) && <Lock size={16} className="section-lock" />}
-            </div>
-
-            {!isStateAtLeast(DASHBOARD_STATES.SURVEY_COMPLETED) ? (
-              <div className="empty-state">
-                <div className="empty-icon">
-                  <BookOpen size={48} />
-                </div>
-                <h3>No learning data yet</h3>
-                <p>
-                  {isState(DASHBOARD_STATES.NO_DOCUMENT) && 'Upload study material to begin'}
-                  {isState(DASHBOARD_STATES.SURVEY_READY) && 'Complete the prerequisite survey to unlock'}
-                  {isState(DASHBOARD_STATES.DOCUMENT_UPLOADED) && 'Generate and complete survey to unlock'}
+          <div className="db-action-card">
+            <div className="db-action-header">
+              <div className="db-action-icon">
+                {isState(DASHBOARD_STATES.QUIZ_COMPLETED) ? <Award size={20} /> :
+                 isState(DASHBOARD_STATES.QUIZ_IN_PROGRESS) ? <Play size={20} /> :
+                 isState(DASHBOARD_STATES.SURVEY_COMPLETED) ? <Sparkles size={20} /> :
+                 isState(DASHBOARD_STATES.SURVEY_READY) ? <Target size={20} /> :
+                 <Upload size={20} />}
+              </div>
+              <div>
+                <h2 className="db-action-title">
+                  {(isState(DASHBOARD_STATES.NO_DOCUMENT) || isState(DASHBOARD_STATES.DOCUMENT_UPLOADED)) && 'Upload Study Material'}
+                  {isState(DASHBOARD_STATES.SURVEY_READY) && 'Survey Generated'}
+                  {isState(DASHBOARD_STATES.SURVEY_COMPLETED) && 'Ready for Quiz'}
+                  {isState(DASHBOARD_STATES.QUIZ_IN_PROGRESS) && 'Quiz in Progress'}
+                  {isState(DASHBOARD_STATES.QUIZ_COMPLETED) && 'Quiz Complete'}
+                </h2>
+                <p className="db-action-sub">
+                  {isState(DASHBOARD_STATES.NO_DOCUMENT) && 'Start by uploading a PDF or text file'}
+                  {isState(DASHBOARD_STATES.DOCUMENT_UPLOADED) && 'Select a file, then generate survey'}
+                  {isState(DASHBOARD_STATES.SURVEY_READY) && 'Prerequisite assessment is ready'}
+                  {isState(DASHBOARD_STATES.SURVEY_COMPLETED) && 'Baseline established · Adaptive quiz ready'}
+                  {isState(DASHBOARD_STATES.QUIZ_IN_PROGRESS) && (currentQuiz?.userAnswers ? `${Object.keys(currentQuiz.userAnswers).length} / ${currentQuiz.questions.length} answered` : 'Continue where you left off')}
+                  {isState(DASHBOARD_STATES.QUIZ_COMPLETED) && 'Great work · View your results'}
                 </p>
               </div>
-            ) : (
-              <div className="overview-content">
-                <div className="stat-card">
-                  <Clock size={20} />
-                  <div>
-                    <div className="stat-value">Just started</div>
-                    <div className="stat-label">Learning Journey</div>
-                  </div>
-                </div>
-                <div className="stat-card">
-                  <Target size={20} />
-                  <div>
-                    <div className="stat-value">Baseline Established</div>
-                    <div className="stat-label">Survey Complete</div>
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* Section 2: Adaptive Learning Insights */}
-          <div className={`dashboard-section ${isStateAtLeast(DASHBOARD_STATES.SURVEY_COMPLETED) ? 'section-unlocked' : ''}`}>
-            <div className="section-header">
-              <Activity size={24} />
-              <h2>Adaptive Learning Insights</h2>
-              {isStateAtLeast(DASHBOARD_STATES.SURVEY_COMPLETED) && <span className="section-badge">Active</span>}
-              {!isStateAtLeast(DASHBOARD_STATES.SURVEY_COMPLETED) && <Lock size={16} className="section-lock" />}
             </div>
 
-            {!isStateAtLeast(DASHBOARD_STATES.SURVEY_COMPLETED) ? (
-              <div className="empty-state">
-                <div className="empty-icon">
-                  <Activity size={48} />
-                </div>
-                <h3>No insights available</h3>
-                <p>
-                  {isState(DASHBOARD_STATES.NO_DOCUMENT) && 'Upload study material to begin'}
-                  {isState(DASHBOARD_STATES.SURVEY_READY) && 'Complete survey to receive personalized insights'}
-                  {isState(DASHBOARD_STATES.DOCUMENT_UPLOADED) && 'Generate and complete survey to unlock insights'}
-                </p>
-              </div>
-            ) : (
-              <div className="insights-content">
-                {/* Study Guidance Card */}
-                {currentQuiz?.studyGuidance ? (
-                  <div className="study-guidance-card">
-                    <div className="guidance-header">
-                      <Lightbulb size={24} />
-                      <h3>Adaptive Study Guidance</h3>
-                    </div>
-
-                    <div className="guidance-content">
-                      <div className="guidance-row">
-                        <div className="guidance-label">Learner Level</div>
-                        <div className="guidance-value level-badge">
-                          {currentQuiz.studyGuidance.learnerLevel}
-                        </div>
-                      </div>
-
-                      <div className="guidance-row">
-                        <div className="guidance-label">Priority Topics</div>
-                        <ul className="priority-topics-list">
-                          {currentQuiz.studyGuidance.priorityTopics.map((topic, index) => (
-                            <li key={index}>{topic}</li>
-                          ))}
-                        </ul>
-                      </div>
-
-                      <div className="guidance-row">
-                        <div className="guidance-label">Recommended Study Time</div>
-                        <div className="guidance-value">
-                          <Clock size={16} />
-                          {currentQuiz.studyGuidance.studyDuration}
-                        </div>
-                      </div>
-
-                      <div className="guidance-action">
-                        <div className="guidance-label">Next Action</div>
-                        <p className="next-action-text">{currentQuiz.studyGuidance.nextAction}</p>
-                      </div>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="insight-card">
-                    <Sparkles size={20} />
+            {(isState(DASHBOARD_STATES.NO_DOCUMENT) || isState(DASHBOARD_STATES.DOCUMENT_UPLOADED)) && (
+              <div className="db-upload-zone">
+                <label htmlFor="file-upload" className="db-upload-label">
+                  <div className="db-upload-inner">
+                    {isProcessing ? <Loader2 className="processing-spinner" size={28} />
+                     : selectedFile ? <FileText size={28} style={{ color: 'var(--color-accent)' }} />
+                     : <Upload size={28} />}
                     <div>
-                      <h4>Prerequisite Assessment Complete</h4>
-                      <p>
-                        {isState(DASHBOARD_STATES.SURVEY_COMPLETED) && 'Generating personalized study guidance...'}
-                        {isState(DASHBOARD_STATES.QUIZ_IN_PROGRESS) && 'Adaptive learning in progress. Insights will update as you answer questions.'}
-                        {isState(DASHBOARD_STATES.QUIZ_COMPLETED) && 'Quiz complete! View detailed performance analysis in results.'}
+                      <p className="db-upload-text">
+                        {isProcessing ? 'Processing...' : selectedFile ? selectedFile.name : 'Click to choose file'}
+                      </p>
+                      <p className="db-upload-hint">
+                        {selectedFile ? `${(selectedFile.size / 1024).toFixed(1)} KB` : 'PDF or TXT · Max 10 MB'}
                       </p>
                     </div>
+                  </div>
+                  <input id="file-upload" type="file" accept=".pdf,.txt"
+                    onChange={handleFileSelect} disabled={isProcessing} style={{ display: 'none' }} />
+                </label>
+                <button className="btn btn-primary btn-icon db-upload-btn"
+                  onClick={handleUpload} disabled={!selectedFile || isProcessing}>
+                  <Sparkles size={18} />{isProcessing ? 'Generating Survey...' : 'Generate Survey'}
+                </button>
+              </div>
+            )}
+
+            {isState(DASHBOARD_STATES.SURVEY_READY) && (
+              <div className="db-action-btns">
+                {currentQuiz?.topicSummary?.length > 0 && (
+                  <div className="db-topics-preview">
+                    {currentQuiz.topicSummary.slice(0, 3).map((t, i) => (
+                      <div key={i} className="db-topic-chip"><span className="db-topic-num">{i + 1}</span><span>{t.title}</span></div>
+                    ))}
+                    {currentQuiz.topicSummary.length > 3 && (
+                      <div className="db-topic-chip db-topic-more">+{currentQuiz.topicSummary.length - 3} more</div>
+                    )}
                   </div>
                 )}
+                <button className="btn btn-primary btn-icon" onClick={handleStartSurvey}>
+                  <Target size={18} />Start Prerequisite Survey
+                </button>
               </div>
+            )}
+
+            {isState(DASHBOARD_STATES.SURVEY_COMPLETED) && (
+              <button className="btn btn-primary btn-icon db-main-btn" onClick={handleStartAdaptiveQuiz} disabled={isProcessing}>
+                {isProcessing ? <><Loader2 className="processing-spinner" size={18}/> Generating...</> : <><Sparkles size={18}/>Start Adaptive Quiz</>}
+              </button>
+            )}
+
+            {isState(DASHBOARD_STATES.QUIZ_IN_PROGRESS) && (
+              <button className="btn btn-primary btn-icon db-main-btn" onClick={handleContinueQuiz}>
+                <Play size={18}/>Continue Quiz
+              </button>
+            )}
+
+            {isState(DASHBOARD_STATES.QUIZ_COMPLETED) && (
+              <div className="db-action-btns">
+                <button className="btn btn-primary btn-icon" onClick={() => navigate('/progress')}><BarChart3 size={18}/>View Results</button>
+                <button className="btn btn-secondary btn-icon" onClick={handleStartAdaptiveQuiz} disabled={isProcessing}><RefreshCw size={18}/>New Quiz</button>
+              </div>
+            )}
+
+            {!isState(DASHBOARD_STATES.NO_DOCUMENT) && (
+              <button className="db-new-session-btn" onClick={handleStartNewDocument} disabled={isProcessing}>
+                <RefreshCw size={13}/>New Document
+              </button>
             )}
           </div>
 
-          {/* Section 3: Quiz Actions */}
-          <div className="dashboard-section dashboard-section-primary">
-            <div className="section-header">
-              <Target size={24} />
-              <h2>Quiz Actions</h2>
-            </div>
-
-            <div className="quiz-actions-content">
-
-              {/* STATE 1 & 2: Upload Document */}
-              {(isState(DASHBOARD_STATES.NO_DOCUMENT) || isState(DASHBOARD_STATES.DOCUMENT_UPLOADED)) && (
-                <>
-                  <label htmlFor="file-upload" className="upload-area-compact">
-                    <div className="upload-content-compact">
-                      <div className="upload-icon-wrapper">
-                        {isProcessing ? (
-                          <Loader2 className="processing-spinner" size={32} />
-                        ) : selectedFile ? (
-                          <FileText className="file-icon" size={32} />
-                        ) : (
-                          <Upload className="upload-icon-main" size={32} />
-                        )}
-                      </div>
-                      <div className="upload-text-wrapper">
-                        <p className="upload-text-compact">
-                          {isProcessing
-                            ? 'Processing document...'
-                            : selectedFile
-                              ? selectedFile.name
-                              : 'Upload Document'}
-                        </p>
-                        <small className="upload-hint">
-                          {selectedFile
-                            ? `${(selectedFile.size / 1024).toFixed(1)} KB`
-                            : 'PDF or TXT • Max 10MB'}
-                        </small>
-                      </div>
-                    </div>
-                    <input
-                      id="file-upload"
-                      type="file"
-                      accept=".pdf,.txt"
-                      onChange={handleFileSelect}
-                      disabled={isProcessing}
-                      style={{ display: 'none' }}
-                    />
-                  </label>
-
-                  <button
-                    className="btn btn-primary btn-large btn-icon mt-md"
-                    onClick={handleUpload}
-                    disabled={!selectedFile || isProcessing}
-                  >
-                    <Sparkles size={20} />
-                    {isProcessing ? 'Generating...' : 'Generate Survey'}
-                  </button>
-
-                  {isState(DASHBOARD_STATES.NO_DOCUMENT) && (
-                    <p className="state-guidance mt-md">
-                      <AlertCircle size={16} />
-                      Upload study material to begin
-                    </p>
-                  )}
-                </>
-              )}
-
-              {/* STATE 2b: Survey Ready */}
-              {isState(DASHBOARD_STATES.SURVEY_READY) && (
-                <>
-                  <div className="state-status-card">
-                    <CheckCircle2 size={24} />
-                    <div>
-                      <h4>Survey Generated</h4>
-                      <p>Prerequisite assessment pending</p>
-                    </div>
-                  </div>
-
-                  {/* Topic-Wise Summary */}
-                  {currentQuiz?.topicSummary && currentQuiz.topicSummary.length > 0 && (
-                    <div className="topic-summary-container mt-lg">
-                      <div className="topic-summary-header">
-                        <BookOpen size={20} />
-                        <h3>Document Overview</h3>
-                      </div>
-                      <p className="topic-summary-subtitle">
-                        Key topics covered in this material
-                      </p>
-                      <div className="topics-grid">
-                        {currentQuiz.topicSummary.map((topic, index) => (
-                          <div key={index} className="topic-card">
-                            <div className="topic-number">{index + 1}</div>
-                            <h4 className="topic-title">{topic.title}</h4>
-                            <p className="topic-summary">{topic.summary}</p>
-                            {topic.keyPoints && topic.keyPoints.length > 0 && (
-                              <ul className="topic-points">
-                                {topic.keyPoints.map((point, i) => (
-                                  <li key={i}>{point}</li>
-                                ))}
-                              </ul>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  <button
-                    className="btn btn-primary btn-large btn-icon mt-md"
-                    onClick={handleStartSurvey}
-                  >
-                    <Target size={20} />
-                    Start Survey
-                  </button>
-                </>
-              )}
-
-              {/* STATE 3: Survey Completed */}
-              {isState(DASHBOARD_STATES.SURVEY_COMPLETED) && (
-                <>
-                  <div className="state-status-card success">
-                    <CheckCircle2 size={24} />
-                    <div>
-                      <h4>Survey Complete</h4>
-                      <p>Baseline established • Ready for adaptive quiz</p>
-                    </div>
-                  </div>
-                  <button
-                    className="btn btn-primary btn-large btn-icon mt-md"
-                    onClick={handleStartAdaptiveQuiz}
-                  >
-                    <Play size={20} />
-                    Start Adaptive Quiz
-                  </button>
-                </>
-              )}
-
-              {/* STATE 4: Quiz In Progress */}
-              {isState(DASHBOARD_STATES.QUIZ_IN_PROGRESS) && (
-                <>
-                  <div className="state-status-card progress">
-                    <Loader2 className="processing-spinner" size={24} />
-                    <div>
-                      <h4>Quiz In Progress</h4>
-                      <p>
-                        {currentQuiz && currentQuiz.userAnswers
-                          ? `${Object.keys(currentQuiz.userAnswers).length}/${currentQuiz.questions.length} questions answered`
-                          : 'Continue where you left off'}
-                      </p>
-                    </div>
-                  </div>
-                  <button
-                    className="btn btn-primary btn-large btn-icon mt-md"
-                    onClick={handleContinueQuiz}
-                  >
-                    <Play size={20} />
-                    Continue Quiz
-                  </button>
-                </>
-              )}
-
-              {/* STATE 5: Quiz Completed */}
-              {isState(DASHBOARD_STATES.QUIZ_COMPLETED) && (
-                <>
-                  <div className="state-status-card success">
-                    <Award size={24} />
-                    <div>
-                      <h4>Quiz Complete</h4>
-                      <p>View your performance analysis</p>
-                    </div>
-                  </div>
-                  <button
-                    className="btn btn-secondary btn-large btn-icon mt-md"
-                    onClick={() => navigate('/progress')}
-                  >
-                    <BarChart3 size={20} />
-                    View Results
-                  </button>
-                  <button
-                    className="btn btn-primary btn-large btn-icon mt-sm"
-                    onClick={handleStartAdaptiveQuiz}
-                  >
-                    <Play size={20} />
-                    Start New Quiz
-                  </button>
-                </>
-              )}
-
-              {/* Start New Document - Visible when session is active */}
-              {!isState(DASHBOARD_STATES.NO_DOCUMENT) && (
-                <div className="new-document-divider">
-                  <button
-                    className="btn btn-secondary btn-outline btn-icon mt-xl"
-                    onClick={handleStartNewDocument}
-                    disabled={isProcessing}
-                  >
-                    <RefreshCw size={18} />
-                    Start New Document
-                  </button>
+          {/* Step Progress Tracker */}
+          <div className="db-steps">
+            {[
+              { label: 'Upload', done: isStateAtLeast(DASHBOARD_STATES.SURVEY_READY) },
+              { label: 'Survey', done: isStateAtLeast(DASHBOARD_STATES.SURVEY_COMPLETED) },
+              { label: 'Quiz', done: isStateAtLeast(DASHBOARD_STATES.QUIZ_COMPLETED) },
+              { label: 'Results', done: isState(DASHBOARD_STATES.QUIZ_COMPLETED) },
+            ].map((step, i, arr) => (
+              <div key={i} className="db-step">
+                <div className={`db-step-dot ${step.done ? 'done' : ''}`}>
+                  {step.done ? <CheckCircle2 size={12} /> : <span>{i + 1}</span>}
                 </div>
-              )}
-
-            </div>
+                <span className={`db-step-label ${step.done ? 'done' : ''}`}>{step.label}</span>
+                {i < arr.length - 1 && <div className={`db-step-line ${step.done ? 'done' : ''}`} />}
+              </div>
+            ))}
           </div>
 
-          {/* Section 4: Performance Analysis */}
-          <div className={`dashboard-section ${isStateAtLeast(DASHBOARD_STATES.SURVEY_COMPLETED) ? 'section-unlocked' : ''}`}>
-            <div className="section-header">
-              <BarChart3 size={24} />
-              <h2>Performance Analysis</h2>
-              {isStateAtLeast(DASHBOARD_STATES.SURVEY_COMPLETED) && <span className="section-badge">Active</span>}
-              {!isStateAtLeast(DASHBOARD_STATES.SURVEY_COMPLETED) && <Lock size={16} className="section-lock" />}
-            </div>
+          <div className="db-gamification-wrap"><Gamification /></div>
+        </div>
 
+        {/* RIGHT COLUMN */}
+        <div className="db-col-right">
+
+          <div className="db-feature-grid">
+            <Link to="/ai-tutor" className="db-feature-card">
+              <div className="db-feature-icon"><MessageSquare size={20}/></div>
+              <div><div className="db-feature-name">AI Tutor</div><div className="db-feature-desc">Ask questions about your material</div></div>
+            </Link>
+            <Link to="/flashcards" className="db-feature-card">
+              <div className="db-feature-icon"><CreditCard size={20}/></div>
+              <div><div className="db-feature-name">Flashcards</div><div className="db-feature-desc">Auto-generated study cards</div></div>
+            </Link>
+            <Link to="/study-planner" className="db-feature-card">
+              <div className="db-feature-icon"><CalendarDays size={20}/></div>
+              <div><div className="db-feature-name">Study Planner</div><div className="db-feature-desc">Day-by-day schedule</div></div>
+            </Link>
+            <Link to="/leaderboard" className="db-feature-card">
+              <div className="db-feature-icon"><Trophy size={20}/></div>
+              <div><div className="db-feature-name">Leaderboard</div><div className="db-feature-desc">Your XP ranking</div></div>
+            </Link>
+          </div>
+
+          <div className="db-insights-panel">
+            <div className="db-panel-header">
+              <Activity size={18}/><h3>Learning Insights</h3>
+              {isStateAtLeast(DASHBOARD_STATES.SURVEY_COMPLETED) && <span className="db-panel-badge">Active</span>}
+            </div>
             {!isStateAtLeast(DASHBOARD_STATES.SURVEY_COMPLETED) ? (
-              <div className="empty-state">
-                <div className="empty-icon">
-                  <BarChart3 size={48} />
+              <div className="db-locked-state">
+                <Lock size={32}/>
+                <p>Complete the prerequisite survey to unlock personalized insights</p>
+              </div>
+            ) : currentQuiz?.studyGuidance ? (
+              <div className="db-guidance-rows">
+                <div className="db-guidance-row">
+                  <span className="db-g-label">Learner Level</span>
+                  <span className="db-level-badge">{currentQuiz.studyGuidance.learnerLevel}</span>
                 </div>
-                <h3>No performance data</h3>
-                <p>
-                  {isState(DASHBOARD_STATES.NO_DOCUMENT) && 'Upload study material to begin'}
-                  {isState(DASHBOARD_STATES.SURVEY_READY) && 'Quiz results and performance metrics will appear here'}
-                  {isState(DASHBOARD_STATES.DOCUMENT_UPLOADED) && 'Complete survey to unlock performance tracking'}
-                </p>
+                <div className="db-guidance-row">
+                  <span className="db-g-label">Study Time</span>
+                  <span className="db-g-value"><Clock size={13}/>{currentQuiz.studyGuidance.studyDuration}</span>
+                </div>
+                <div className="db-guidance-row db-guidance-topics">
+                  <span className="db-g-label">Focus Areas</span>
+                  <div className="db-topic-tags">
+                    {currentQuiz.studyGuidance.priorityTopics.map((t,i) => <span key={i} className="db-topic-tag">{t}</span>)}
+                  </div>
+                </div>
+                <div className="db-next-action"><Lightbulb size={14}/><p>{currentQuiz.studyGuidance.nextAction}</p></div>
               </div>
             ) : (
-              <div className="performance-content">
-                <div className="performance-card">
-                  <Award size={24} />
-                  <div>
-                    <h4>
-                      {isState(DASHBOARD_STATES.SURVEY_COMPLETED) && 'Baseline Established'}
-                      {isState(DASHBOARD_STATES.QUIZ_IN_PROGRESS) && 'Quiz In Progress'}
-                      {isState(DASHBOARD_STATES.QUIZ_COMPLETED) && 'Performance Ready'}
-                    </h4>
-                    <p>
-                      {isState(DASHBOARD_STATES.SURVEY_COMPLETED) && 'Performance tracking is now active. Start adaptive quiz to see metrics.'}
-                      {isState(DASHBOARD_STATES.QUIZ_IN_PROGRESS) && 'Performance metrics will update as you complete the quiz.'}
-                      {isState(DASHBOARD_STATES.QUIZ_COMPLETED) && 'View detailed analysis in the results page.'}
-                    </p>
-                  </div>
-                </div>
+              <div className="db-locked-state">
+                <Sparkles size={28}/>
+                <p>
+                  {isState(DASHBOARD_STATES.SURVEY_COMPLETED) && 'Generating your personalized guidance...'}
+                  {isState(DASHBOARD_STATES.QUIZ_IN_PROGRESS) && 'Insights will update as you complete the quiz.'}
+                  {isState(DASHBOARD_STATES.QUIZ_COMPLETED) && 'Check your full analysis in Results.'}
+                </p>
               </div>
             )}
           </div>
 
-        </div>
-
-        {/* Gamification Section */}
-        <div className="mt-2xl">
-          <Gamification />
-        </div>
-
-        {/* Info Section */}
-        <div className="info-section mt-2xl">
-          <div className="info-box">
-            <div className="info-box-header">
-              <Sparkles size={20} />
-              <strong>Current Status: {dashboardState.replace(/_/g, ' ')}</strong>
+          {isStateAtLeast(DASHBOARD_STATES.SURVEY_COMPLETED) && (
+            <div className="db-perf-card" onClick={() => navigate('/progress')} style={{ cursor: 'pointer' }}>
+              <div className="db-perf-icon"><BarChart3 size={18}/></div>
+              <div>
+                <div className="db-perf-title">{isState(DASHBOARD_STATES.QUIZ_COMPLETED) ? 'View Full Results' : 'Performance Tracking Active'}</div>
+                <div className="db-perf-sub">{isState(DASHBOARD_STATES.QUIZ_COMPLETED) ? 'SWOT analysis and breakdown ready' : 'Complete a quiz to generate your report'}</div>
+              </div>
+              <TrendingUp size={18} style={{ marginLeft: 'auto', color: 'var(--color-accent)' }}/>
             </div>
-            <ol className="info-list">
-              {isState(DASHBOARD_STATES.NO_DOCUMENT) && (
-                <>
-                  <li>✓ Upload your study document (PDF or TXT format)</li>
-                  <li>○ AI will generate 5 prerequisite questions</li>
-                  <li>○ Complete the survey to assess baseline knowledge</li>
-                  <li>○ Dashboard sections will unlock with insights</li>
-                </>
-              )}
-              {isState(DASHBOARD_STATES.SURVEY_READY) && (
-                <>
-                  <li>✓ Document uploaded and analyzed</li>
-                  <li>✓ Prerequisite survey generated</li>
-                  <li>→ Complete the survey to establish baseline</li>
-                  <li>○ Unlock adaptive learning features</li>
-                </>
-              )}
-              {isState(DASHBOARD_STATES.SURVEY_COMPLETED) && (
-                <>
-                  <li>✓ Document uploaded</li>
-                  <li>✓ Prerequisite survey completed</li>
-                  <li>✓ Baseline knowledge established</li>
-                  <li>→ Start adaptive quiz for personalized learning</li>
-                </>
-              )}
-              {isState(DASHBOARD_STATES.QUIZ_IN_PROGRESS) && (
-                <>
-                  <li>✓ Baseline established</li>
-                  <li>→ Quiz in progress - continue answering</li>
-                  <li>○ Complete quiz to see performance analysis</li>
-                  <li>○ Unlock detailed insights and recommendations</li>
-                </>
-              )}
-              {isState(DASHBOARD_STATES.QUIZ_COMPLETED) && (
-                <>
-                  <li>✓ Baseline established</li>
-                  <li>✓ Quiz completed</li>
-                  <li>→ View performance analysis and SWOT insights</li>
-                  <li>○ Start new quiz for continued learning</li>
-                </>
-              )}
-            </ol>
-          </div>
+          )}
         </div>
-
       </div>
 
-      {/* Confirmation Modal for New Document */}
       {showNewDocModal && (
         <div className="modal-overlay" onClick={handleCancelNewDocument}>
           <div className="modal-content" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
               <h3>Start a new document?</h3>
-              <button
-                className="modal-close"
-                onClick={handleCancelNewDocument}
-                aria-label="Close"
-              >
-                <X size={20} />
-              </button>
+              <button className="modal-close" onClick={handleCancelNewDocument}><X size={20}/></button>
             </div>
             <div className="modal-body">
-              <p>Your current session will be saved and you can return to it later.</p>
-              <div className="modal-info">
-                <AlertCircle size={16} />
-                <span>All progress, survey results, and quiz attempts will be preserved.</span>
-              </div>
+              <p>Your current session will be archived and can be restored anytime.</p>
+              <div className="modal-info"><AlertCircle size={16}/><span>All progress and quiz results will be preserved.</span></div>
             </div>
             <div className="modal-actions">
-              <button
-                className="btn btn-secondary"
-                onClick={handleCancelNewDocument}
-                disabled={isProcessing}
-              >
-                Cancel
-              </button>
-              <button
-                className="btn btn-primary btn-icon"
-                onClick={handleConfirmNewDocument}
-                disabled={isProcessing}
-              >
-                {isProcessing ? (
-                  <>
-                    <Loader2 className="processing-spinner" size={18} />
-                    Archiving...
-                  </>
-                ) : (
-                  <>
-                    <RefreshCw size={18} />
-                    Start New
-                  </>
-                )}
+              <button className="btn btn-secondary" onClick={handleCancelNewDocument} disabled={isProcessing}>Cancel</button>
+              <button className="btn btn-primary btn-icon" onClick={handleConfirmNewDocument} disabled={isProcessing}>
+                {isProcessing ? <><Loader2 className="processing-spinner" size={16}/>Archiving...</> : <><RefreshCw size={16}/>Archive & Start New</>}
               </button>
             </div>
           </div>
         </div>
       )}
 
+    </div>
     </div>
   )
 }

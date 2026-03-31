@@ -71,14 +71,25 @@
   font-size: 0.875rem;
   font-weight: 400;
   cursor: pointer;
-  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
-  padding: 0.5rem 1rem;
-  border-radius: 20px;
+  transition: all 0.4s cubic-bezier(0.23, 1, 0.32, 1);
+  padding: 0.6rem 1.25rem;
+  border-radius: 100px;
 }
 
 .landing-nav-text-link:hover {
   color: var(--color-text-primary);
   background: var(--color-bg-hover);
+}
+
+.landing-nav-text-link.active {
+  background: var(--color-text-primary);
+  color: var(--color-bg-primary);
+  font-weight: 500;
+}
+
+[data-theme="light"] .landing-nav-text-link.active {
+  background: #000;
+  color: #fff;
 }
 
 .landing-nav-right {
@@ -168,7 +179,7 @@
   letter-spacing: 0.2px;
   line-height: 1.4;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: all 0.4s cubic-bezier(0.23, 1, 0.32, 1);
   white-space: nowrap;
   text-decoration: none;
   display: inline-block;
@@ -182,9 +193,17 @@
 }
 
 .landing-pill.active {
-  background: var(--color-bg-primary);
-  color: var(--color-text-primary);
-  font-weight: 500;
+  background: var(--color-text-primary);
+  color: var(--color-bg-primary);
+  font-weight: 600;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+  transform: scale(1.05);
+}
+
+[data-theme="light"] .landing-pill.active {
+  background: #000;
+  color: #fff;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
 }
 
 .landing-pill.active:hover {

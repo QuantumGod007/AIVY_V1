@@ -9,18 +9,27 @@ if (!API_KEY) {
 const genAI = new GoogleGenerativeAI(API_KEY)
 
 /**
+ * Helper to get generative model with stable v1 API version
+ */
+function getModel(config) {
+    const model = genAI.getGenerativeModel(
+        { model: 'gemini-1.5-flash' },
+        { apiVersion: 'v1' }
+    )
+    if (config) model.generationConfig = config
+    return model
+}
+
+/**
  * Generate a prerequisite survey to assess user's existing knowledge
  */
 export async function generatePrerequisiteSurvey(text) {
     try {
-        const model = genAI.getGenerativeModel({
-            model: 'gemini-2.5-flash',
-            generationConfig: {
-                temperature: 0.7,
-                topK: 40,
-                topP: 0.95,
-                maxOutputTokens: 2048,
-            }
+        const model = getModel({
+            temperature: 0.7,
+            topK: 40,
+            topP: 0.95,
+            maxOutputTokens: 2048,
         })
 
         const prompt = `Based on the following educational content, generate a prerequisite knowledge survey with 5 questions to assess what the user already knows BEFORE studying this material.
@@ -84,14 +93,11 @@ Generate exactly 5 prerequisite questions.`
  */
 export async function analyzeDocument(text) {
     try {
-        const model = genAI.getGenerativeModel({
-            model: 'gemini-2.5-flash',
-            generationConfig: {
-                temperature: 0.5,
-                topK: 40,
-                topP: 0.95,
-                maxOutputTokens: 1024,
-            }
+        const model = getModel({
+            temperature: 0.5,
+            topK: 40,
+            topP: 0.95,
+            maxOutputTokens: 1024,
         })
 
         const prompt = `Analyze the following educational content and provide:
@@ -142,14 +148,11 @@ Respond ONLY with valid JSON in this exact format:
  */
 export async function generateQuiz(text, numQuestions = 10) {
     try {
-        const model = genAI.getGenerativeModel({
-            model: 'gemini-2.5-flash',
-            generationConfig: {
-                temperature: 0.7,
-                topK: 40,
-                topP: 0.95,
-                maxOutputTokens: 2048,
-            }
+        const model = getModel({
+            temperature: 0.7,
+            topK: 40,
+            topP: 0.95,
+            maxOutputTokens: 2048
         })
 
         const prompt = `Based on the following educational content, generate ${numQuestions} multiple-choice quiz questions.
@@ -206,14 +209,11 @@ Generate exactly ${numQuestions} questions.`
  */
 export async function generateTopicWiseSummary(text) {
     try {
-        const model = genAI.getGenerativeModel({
-            model: 'gemini-2.5-flash',
-            generationConfig: {
-                temperature: 0.5,
-                topK: 40,
-                topP: 0.95,
-                maxOutputTokens: 2048,
-            }
+        const model = getModel({
+            temperature: 0.5,
+            topK: 40,
+            topP: 0.95,
+            maxOutputTokens: 2048,
         })
 
         const prompt = `Analyze the following educational content and break it down into topic-wise summaries.
@@ -284,14 +284,11 @@ Generate 4-6 topics with their summaries.`
  */
 export async function analyzeQuizResults(questions, userAnswers, score, total) {
     try {
-        const model = genAI.getGenerativeModel({
-            model: 'gemini-2.5-flash',
-            generationConfig: {
-                temperature: 0.6,
-                topK: 40,
-                topP: 0.95,
-                maxOutputTokens: 512,
-            }
+        const model = getModel({
+            temperature: 0.6,
+            topK: 40,
+            topP: 0.95,
+            maxOutputTokens: 512,
         })
 
         const accuracy = Math.round((score / total) * 100)
@@ -365,14 +362,11 @@ Respond ONLY with valid JSON in this exact format:
  */
 export async function generateStudyGuidance(documentText, surveyQuestions, surveyAnswers) {
     try {
-        const model = genAI.getGenerativeModel({
-            model: 'gemini-2.5-flash',
-            generationConfig: {
-                temperature: 0.7,
-                topK: 40,
-                topP: 0.95,
-                maxOutputTokens: 1024,
-            }
+        const model = getModel({
+            temperature: 0.7,
+            topK: 40,
+            topP: 0.95,
+            maxOutputTokens: 1024,
         })
 
         // Calculate survey score
@@ -487,14 +481,11 @@ Be specific and actionable. Reference actual topics from the document.`
  */
 export async function generateAdaptiveQuiz(documentText, surveyQuestions, surveyAnswers, studyGuidance) {
     try {
-        const model = genAI.getGenerativeModel({
-            model: 'gemini-2.5-flash',
-            generationConfig: {
-                temperature: 0.7,
-                topK: 40,
-                topP: 0.95,
-                maxOutputTokens: 2048,
-            }
+        const model = getModel({
+            temperature: 0.7,
+            topK: 40,
+            topP: 0.95,
+            maxOutputTokens: 2048
         })
 
         // Identify weak areas from survey
@@ -576,5 +567,141 @@ Generate exactly 10 adaptive questions.`
     } catch (error) {
         console.error('Error generating adaptive quiz:', error)
         throw new Error(`Failed to generate adaptive quiz: ${error.message}`)
+    }
+}
+
+/**
+ * Generate a day-by-day study plan based on subject & exam date
+ */
+export async function generateStudyPlan(documentText, subject, examDate, learnerLevel = 'Intermediate') {
+    try {
+        const model = getModel({ temperature: 0.6, maxOutputTokens: 3000 })
+
+        const today = new Date().toISOString().split('T')[0]
+        const daysRemaining = Math.max(1, Math.ceil((new Date(examDate) - new Date()) / (1000 * 60 * 60 * 24)))
+        const planDays = Math.min(daysRemaining, 14)
+
+        const docSummary = documentText
+            ? `Study Material Summary:\n${documentText.substring(0, 4000)}`
+            : `Subject: ${subject}`
+
+        const prompt = `Create a detailed ${planDays}-day study plan for a ${learnerLevel} student.
+Subject: ${subject}
+Exam Date: ${examDate} (${daysRemaining} days away from today ${today})
+${docSummary}
+
+Generate a practical, structured day-by-day plan.
+
+Respond ONLY with valid JSON:
+{
+  "title": "Study Plan for ${subject}",
+  "overview": "One sentence plan summary",
+  "days": [
+    {
+      "day": 1,
+      "topic": "Topic name for this day",
+      "goal": "What the student will achieve today",
+      "duration": "45 minutes",
+      "tasks": [
+        "Specific task 1",
+        "Specific task 2",
+        "Specific task 3"
+      ]
+    }
+  ]
+}
+
+Generate exactly ${planDays} days.`
+
+        const result = await model.generateContent(prompt)
+        let text = result.response.text()
+        if (text.includes('```json')) text = text.split('```json')[1].split('```')[0]
+        else if (text.includes('```')) text = text.split('```')[1].split('```')[0]
+        const match = text.match(/\{[\s\S]*\}/)
+        if (match) return JSON.parse(match[0])
+        throw new Error('Failed to parse study plan')
+    } catch (error) {
+        console.error('Error generating study plan:', error)
+        throw error
+    }
+}
+
+/**
+ * Generate flashcards from document text or topic
+ */
+export async function generateFlashcards(documentText, topic = '') {
+    try {
+        const model = getModel({ temperature: 0.6, maxOutputTokens: 3000 })
+
+        const source = documentText
+            ? `Based on this study material:\n${documentText.substring(0, 7000)}`
+            : `Based on the topic: ${topic}`
+
+        const prompt = `${source}
+
+Generate 20 high-quality flashcards for studying.
+
+Rules:
+- Questions should test understanding, not just recall
+- Answers should be concise (1-3 sentences max)
+- Cover a variety of concepts from the material
+- Progress from foundational to advanced
+
+Respond ONLY with valid JSON:
+{
+  "cards": [
+    {
+      "front": "Clear question here?",
+      "back": "Concise, accurate answer here."
+    }
+  ]
+}
+
+Generate exactly 20 flashcards.`
+
+        const result = await model.generateContent(prompt)
+        let text = result.response.text()
+        if (text.includes('```json')) text = text.split('```json')[1].split('```')[0]
+        else if (text.includes('```')) text = text.split('```')[1].split('```')[0]
+        const match = text.match(/\{[\s\S]*\}/)
+        if (match) {
+            const data = JSON.parse(match[0])
+            return data.cards || []
+        }
+        throw new Error('Failed to parse flashcards')
+    } catch (error) {
+        console.error('Error generating flashcards:', error)
+        throw error
+    }
+}
+
+/**
+ * Generate AI Tutor response based on document context and user message
+ */
+export async function generateTutorResponse(documentText, message, chatHistory = []) {
+    try {
+        const model = getModel({
+            temperature: 0.8,
+            topK: 40,
+            topP: 0.95,
+            maxOutputTokens: 1024,
+        })
+
+        const historyPrompt = chatHistory.length > 0
+            ? `\n\nRecent Chat History:\n${chatHistory.map(m => `${m.role.toUpperCase()}: ${m.text}`).join('\n')}`
+            : ''
+
+        const contextPrompt = documentText
+            ? `You are an expert academic tutor. The student is studying the following material:\n\n${documentText.substring(0, 6000)}\n\nAnswer the student's question clearly, educationally, and concisely, referencing the material when relevant.${historyPrompt}`
+            : `You are an expert academic tutor. Answer the student's question clearly, concisely, and educationally.${historyPrompt}`
+
+        const prompt = `${contextPrompt}\n\nSTUDENT QUESTION: ${message}`
+
+        const result = await model.generateContent(prompt)
+        const response = await result.response
+        return response.text()
+    } catch (error) {
+        console.error('Error generating tutor response:', error)
+        throw error
     }
 }

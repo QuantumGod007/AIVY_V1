@@ -80,10 +80,30 @@ function Landing() {
           <div className="landing-nav-top">
             <div className="landing-logo">AIVY</div>
             <div className="landing-nav-center">
-              <button onClick={() => scrollToSection('overview')} className="landing-nav-text-link">Overview</button>
-              <button onClick={() => scrollToSection('features')} className="landing-nav-text-link">Features</button>
-              <button onClick={() => scrollToSection('vision')} className="landing-nav-text-link">Vision</button>
-              <button onClick={() => scrollToSection('help')} className="landing-nav-text-link">Learn</button>
+              <button
+                onClick={() => scrollToSection('overview')}
+                className={`landing-nav-text-link ${activeSection === 'overview' ? 'active' : ''}`}
+              >
+                Overview
+              </button>
+              <button
+                onClick={() => scrollToSection('features')}
+                className={`landing-nav-text-link ${activeSection === 'features' ? 'active' : ''}`}
+              >
+                Features
+              </button>
+              <button
+                onClick={() => scrollToSection('vision')}
+                className={`landing-nav-text-link ${activeSection === 'vision' ? 'active' : ''}`}
+              >
+                Vision
+              </button>
+              <button
+                onClick={() => scrollToSection('help')}
+                className={`landing-nav-text-link ${activeSection === 'help' ? 'active' : ''}`}
+              >
+                Learn
+              </button>
             </div>
             <div className="landing-nav-right">
               <button

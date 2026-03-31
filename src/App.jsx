@@ -11,6 +11,10 @@ import Quiz from './pages/Quiz'
 import Progress from './pages/Progress'
 import PrivacyPolicy from './pages/PrivacyPolicy'
 import Dashboard from './pages/Dashboard'
+import AiTutor from './pages/AiTutor'
+import StudyPlanner from './pages/StudyPlanner'
+import Flashcards from './pages/Flashcards'
+import Leaderboard from './pages/Leaderboard'
 
 function App() {
   const [user, setUser] = useState(null)
@@ -32,7 +36,10 @@ function App() {
   )
 
   const isAuthRoute = ['/login', '/signup'].includes(location.pathname)
-  const isProtectedRoute = ['/dashboard', '/quiz', '/progress'].includes(location.pathname)
+  const isProtectedRoute = [
+    '/dashboard', '/quiz', '/progress',
+    '/ai-tutor', '/study-planner', '/flashcards', '/leaderboard'
+  ].includes(location.pathname)
 
   if (!user && isProtectedRoute) {
     return <Navigate to="/login" />
@@ -52,6 +59,10 @@ function App() {
       <Route path="/dashboard" element={<Dashboard />} />
       <Route path="/quiz" element={<Quiz />} />
       <Route path="/progress" element={<Progress />} />
+      <Route path="/ai-tutor" element={<AiTutor />} />
+      <Route path="/study-planner" element={<StudyPlanner />} />
+      <Route path="/flashcards" element={<Flashcards />} />
+      <Route path="/leaderboard" element={<Leaderboard />} />
       <Route path="*" element={<Navigate to="/" />} />
     </Routes>
   )
