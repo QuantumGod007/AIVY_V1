@@ -2,12 +2,13 @@ import { useEffect, useState } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { onAuthStateChanged } from 'firebase/auth'
 import { auth } from '../firebase'
-import { analyzeQuizResults, generateRecoveryQuiz } from '../services/geminiService'
+import { analyzeQuizResults, generateRecoveryQuiz, generateSmartReStudyPath } from '../services/geminiService'
 import { saveCurrentQuiz, getQuizResults, getCurrentQuiz } from '../services/storageService'
 import {
   ArrowLeft, TrendingUp, Target, Award, AlertCircle,
   CheckCircle2, XCircle, BarChart3, Brain, RefreshCw,
-  Zap, ChevronDown, ChevronUp, Lightbulb, BookOpen
+  Zap, ChevronDown, ChevronUp, Lightbulb, BookOpen,
+  Loader2, Sparkles
 } from 'lucide-react'
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -111,6 +112,9 @@ function Progress() {
   const [recoveryLoading, setRecoveryLoading] = useState(false)
   const [recoveryDone, setRecoveryDone]     = useState(false)
   const [activeTab, setActiveTab]           = useState('overview') // overview | review
+  const [reStudyLoading, setReStudyLoading] = useState(false)
+  const [reStudyData, setReStudyData]       = useState(null)
+  const [error, setError]                   = useState('')
   const navigate = useNavigate()
   const location = useLocation()
 
@@ -203,6 +207,26 @@ function Progress() {
       console.error('Recovery quiz error:', err)
     } finally {
       setRecoveryLoading(false)
+    }
+  }
+
+  const handleSmartReStudy = async () => {
+    if (!results?.questions || !results?.answers) return
+    setReStudyLoading(true)
+    setError('')
+    try {
+      let docText = ''
+      try {
+        const cq = await getCurrentQuiz()
+        if (cq?.documentText) docText = cq.documentText
+      } catch {}
+      
+      const lesson = await generateSmartReStudyPath(results, docText)
+      setReStudyData(lesson)
+    } catch (err) {
+      console.error('Re-study error:', err)
+    } finally {
+      setReStudyLoading(false)
     }
   }
 
@@ -501,6 +525,48 @@ function Progress() {
                     <span style={{ fontSize: '0.8rem', color: 'var(--color-text-primary)', lineHeight: 1.5 }}>{tip}</span>
                   </div>
                 ))}
+                
+                {!reStudyData ? (
+                  <button 
+                    onClick={handleSmartReStudy}
+                    disabled={reStudyLoading || wrongCount === 0}
+                    style={{
+                      width: '100%', marginTop: '0.5rem', padding: '0.75rem',
+                      background: 'var(--color-bg-elevated)', border: '1px dashed var(--color-accent)',
+                      borderRadius: '10px', color: 'var(--color-accent)', fontWeight: 600,
+                      fontSize: '0.8rem', cursor: 'pointer', display: 'flex', 
+                      alignItems: 'center', justifyContent: 'center', gap: '0.5rem'
+                    }}
+                  >
+                    {reStudyLoading ? <Loader2 size={14} className="processing-spinner" /> : <Sparkles size={14} />}
+                    {reStudyLoading ? 'Generating personalized refresher...' : 'Generate AI Smart Re-Study Lesson'}
+                  </button>
+                ) : (
+                  <div style={{
+                    marginTop: '1rem', padding: '1.25rem', borderRadius: '12px',
+                    background: 'var(--color-bg-secondary)', borderLeft: '4px solid var(--color-accent)',
+                    animation: 'fadeInUp 0.4s ease'
+                  }}>
+                    <h4 style={{ margin: '0 0 0.5rem', color: 'var(--color-accent)', fontSize: '0.9rem' }}>{reStudyData.title}</h4>
+                    <p style={{ margin: '0 0 1rem', fontSize: '0.825rem', lineHeight: 1.6, color: 'var(--color-text-primary)' }}>{reStudyData.refresher}</p>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem', marginBottom: '1rem' }}>
+                      {reStudyData.keyTips?.map((tip, i) => (
+                        <div key={i} style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', display: 'flex', gap: '0.4rem' }}>
+                          <CheckCircle2 size={12} style={{ color: 'var(--color-success)', marginTop: 2, flexShrink: 0 }} />
+                          {tip}
+                        </div>
+                      ))}
+                    </div>
+                    <div style={{ 
+                      padding: '0.6rem 0.8rem', borderRadius: '8px', 
+                      background: 'rgba(99,102,241,0.08)', fontSize: '0.75rem', 
+                      fontWeight: 600, color: 'var(--color-accent)',
+                      display: 'flex', alignItems: 'center', gap: '0.5rem'
+                    }}>
+                      <Target size={14} /> Next Goal: {reStudyData.nextGoal}
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
 

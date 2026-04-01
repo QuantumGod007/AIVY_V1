@@ -817,7 +817,7 @@ p {
 
 .quiz-page {
   min-height: 100vh;
-  padding: var(--spacing-2xl) var(--spacing-xl);
+  padding: 1.5rem 1rem;
   background: var(--color-bg-primary);
   display: flex;
   align-items: center;
@@ -854,7 +854,7 @@ p {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: var(--spacing-2xl);
+  margin-bottom: 1rem;
 }
 
 .btn-minimal {
@@ -898,14 +898,14 @@ p {
 
 /* Progress Indicator - Dots */
 .quiz-progress-minimal {
-  margin-bottom: var(--spacing-3xl);
+  margin-bottom: 1.5rem;
 }
 
 .progress-dots {
   display: flex;
   gap: var(--spacing-sm);
   justify-content: center;
-  margin-bottom: var(--spacing-md);
+  margin-bottom: 0.5rem;
 }
 
 .progress-dot {
@@ -938,15 +938,15 @@ p {
 
 /* Question Card - Minimal */
 .quiz-question-minimal {
-  margin-bottom: var(--spacing-2xl);
+  margin-bottom: 1.25rem;
 }
 
 .question-text-minimal {
-  font-size: 1.5rem;
-  font-weight: 600;
+  font-size: 1.25rem;
+  font-weight: 700;
   color: var(--color-text-primary);
-  margin-bottom: var(--spacing-2xl);
-  line-height: 1.4;
+  margin-bottom: 1.5rem;
+  line-height: 1.35;
   text-align: center;
 }
 
@@ -960,12 +960,12 @@ p {
   display: flex;
   align-items: center;
   gap: var(--spacing-md);
-  padding: var(--spacing-lg);
+  padding: 0.75rem 1rem;
   background: var(--color-bg-card);
-  border: 2px solid var(--color-border);
-  border-radius: var(--radius-lg);
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
   cursor: pointer;
-  transition: all var(--transition-base);
+  transition: all var(--transition-fast);
   text-align: left;
   font-family: inherit;
   width: 100%;
@@ -983,8 +983,8 @@ p {
 }
 
 .option-indicator {
-  width: 32px;
-  height: 32px;
+  width: 28px;
+  height: 28px;
   border-radius: 50%;
   background: var(--color-bg-elevated);
   border: 1px solid var(--color-border);
@@ -3026,6 +3026,51 @@ label {
   min-width: 0;
   padding: var(--spacing-2xl);
   overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.intelligence-mode.app-main {
+  height: 100vh;
+  overflow: hidden;
+  padding: 1.25rem 1.5rem;
+  padding-bottom: 1.25rem;
+}
+
+.intelligence-mode .page-header {
+  flex-shrink: 0;
+  position: relative;
+  margin-bottom: 1rem;
+  border-bottom: 1px solid var(--color-border);
+  padding-bottom: 0.75rem;
+}
+
+.intelligence-mode .tutor-layout {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 1fr 260px;
+  gap: 1.25rem;
+}
+
+.chat-window {
+  display: flex;
+  flex-direction: column;
+  background: var(--color-bg-secondary);
+  border: 1px solid var(--color-border);
+  border-radius: 16px;
+  overflow: hidden;
+}
+
+.chat-messages {
+  flex: 1;
+  overflow-y: auto;
+  padding: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-border) transparent;
 }
 
 /* ============================================
@@ -3227,11 +3272,11 @@ label {
 }
 
 .page-title {
-  font-size: var(--text-2xl);
-  font-weight: var(--font-semibold);
-  letter-spacing: var(--tracking-tight);
+  font-size: 1.5rem;
+  font-weight: 800;
+  letter-spacing: -0.015em;
   color: var(--color-text-primary);
-  margin-bottom: var(--spacing-xs);
+  margin-bottom: 0.25rem;
 }
 
 .page-subtitle {
@@ -3332,7 +3377,7 @@ label {
   display: grid;
   grid-template-columns: 1fr 280px;
   gap: var(--spacing-xl);
-  height: calc(100vh - 180px);
+  height: 100%;
 }
 
 .chat-window {
@@ -3389,11 +3434,12 @@ label {
 }
 
 .chat-bubble {
-  max-width: 72%;
-  padding: var(--spacing-md) var(--spacing-lg);
-  border-radius: var(--radius-lg);
-  font-size: var(--text-sm);
-  line-height: 1.6;
+  max-width: 80%;
+  padding: 0.75rem 1rem;
+  border-radius: 12px;
+  font-size: 0.825rem;
+  line-height: 1.55;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.03);
 }
 
 .chat-bubble-ai {
@@ -3403,8 +3449,14 @@ label {
 }
 
 .chat-bubble-user {
-  background: var(--color-text-primary);
-  color: var(--color-bg-primary);
+  background: linear-gradient(135deg, var(--color-accent), var(--color-accent-secondary));
+  color: #ffffff;
+  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.2);
+  border: none;
+}
+
+.chat-bubble-user p {
+  color: #ffffff !important;
 }
 
 .chat-bubble-loading {
@@ -3475,10 +3527,12 @@ label {
 }
 
 .tutor-tip-card {
-  background: var(--color-bg-secondary);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-xl);
-  padding: var(--spacing-lg);
+  background: var(--color-bg-card);
+  backdrop-filter: blur(12px);
+  border: var(--glass-border);
+  border-radius: 24px;
+  padding: 1.5rem;
+  margin-bottom: var(--spacing-md);
 }
 
 .tutor-tip-title {
@@ -3520,22 +3574,26 @@ label {
   display: block;
   width: 100%;
   text-align: left;
-  padding: var(--spacing-sm) var(--spacing-md);
-  margin-bottom: var(--spacing-xs);
-  background: var(--color-bg-elevated);
+  padding: 0.85rem 1.125rem;
+  margin-bottom: 0.75rem;
+  background: var(--color-bg-primary);
   border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  color: var(--color-text-secondary);
-  font-size: var(--text-xs);
+  border-radius: 12px;
+  color: var(--color-text-primary);
+  font-size: 0.825rem;
+  font-weight: 500;
   font-family: inherit;
   cursor: pointer;
   transition: all var(--transition-fast);
 }
 
 .tutor-suggestion-btn:hover {
-  border-color: var(--color-border-focus);
-  color: var(--color-text-primary);
+  transform: translateY(-2px);
+  border-color: var(--color-accent);
+  background: var(--color-bg-hover);
+  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.1);
 }
+
 
 /* ============================================
    STUDY PLANNER

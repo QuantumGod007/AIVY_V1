@@ -4,6 +4,7 @@ import { getCurrentQuiz } from '../services/storageService'
 import { generateTutorResponse } from '../services/geminiService'
 import { MessageSquare, Send, Loader2, RotateCcw, BookOpen, Brain } from 'lucide-react'
 import { auth } from '../firebase'
+import { addXP } from '../services/gamificationService'
 import { db } from '../firebase'
 import { doc, setDoc, getDoc, serverTimestamp } from 'firebase/firestore'
 import { onAuthStateChanged } from 'firebase/auth'
@@ -39,7 +40,7 @@ async function loadChatHistory() {
 
 const WELCOME_MSG = {
     role: 'ai',
-    text: "Hello! I'm your AI study tutor. Ask me anything about your study material or any topic you're learning. I remember our previous conversation too! 🧠",
+    text: "Hello! I'm AIVY Intelligence. Ask me anything about your study material or any topic you're learning. I have full context of our research history. 🧠",
     ts: Date.now()
 }
 
@@ -105,12 +106,19 @@ function AiTutor() {
         setLoading(true)
 
         try {
-            const history = messages.slice(-10)
+            // Send more history for better context (Gemini 2.5 Pro handles this easily)
+            const history = messages.slice(-30)
             const aiText = await generateTutorResponse(documentContext, text, history)
             const aiMsg = { role: 'ai', text: aiText, ts: Date.now() }
             const withAI = [...updated, aiMsg]
             setMessages(withAI)
             debouncedSave(withAI)
+
+            // Award XP for engagement (every 3 user messages)
+            const userMsgs = withAI.filter(m => m.role === 'user').length
+            if (userMsgs > 0 && userMsgs % 3 === 0) {
+                addXP(5, 'AI Tutor Engagement')
+            }
         } catch {
             const errMsg = { role: 'ai', text: 'Sorry, I encountered an error. Please try again.', ts: Date.now() }
             setMessages(prev => [...prev, errMsg])
@@ -137,14 +145,14 @@ function AiTutor() {
     return (
         <div className="app-layout">
             <Sidebar />
-            <main className="app-main">
+            <main className="app-main intelligence-mode">
                 <div className="page-header">
                     <div>
-                        <h1 className="page-title">AI Tutor</h1>
+                        <h1 className="page-title">AIVY Intelligence</h1>
                         <p className="page-subtitle">
                             {documentContext
-                                ? `Aware of: ${documentName}`
-                                : 'Ask anything — upload a document for context-aware answers'}
+                                ? `Deep Inquiry: ${documentName}`
+                                : 'Advanced reasoning and document synthesis engine'}
                         </p>
                     </div>
                     <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>

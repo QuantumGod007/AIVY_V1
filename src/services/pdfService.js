@@ -26,14 +26,15 @@ export const SUPPORTED_EXTENSIONS = ['.pdf', '.txt', '.jpg', '.jpeg', '.png', '.
 // ─── PDF Extraction ───────────────────────────────────────────────────────────
 
 /**
- * Improved PDF text extraction.
- * Sorts text items by vertical position to preserve reading order,
- * and inserts line breaks based on y-coordinate gaps.
+ * Enhanced PDF text extraction with AI Vision OCR fallback.
+ * First attempts to extract native text; if results are poor or it fails,
+ * it renders pages to images and uses Gemini Vision to OCR them.
  */
 export async function extractTextFromPDF(file) {
+    let pdf = null
     try {
         const arrayBuffer = await file.arrayBuffer()
-        const pdf = await pdfjsLib.getDocument({
+        pdf = await pdfjsLib.getDocument({
             data: arrayBuffer,
             useWorkerFetch: false,
             isEvalSupported: false,
@@ -49,7 +50,6 @@ export async function extractTextFromPDF(file) {
 
                 if (!textContent.items.length) continue
 
-                // Sort items by Y position descending (PDF y-axis is bottom-up)
                 const sorted = [...textContent.items].sort((a, b) => {
                     const yDiff = (b.transform?.[5] || 0) - (a.transform?.[5] || 0)
                     if (Math.abs(yDiff) > 2) return yDiff
@@ -77,18 +77,81 @@ export async function extractTextFromPDF(file) {
         }
 
         const trimmed = fullText.trim()
+        
+        // If extraction yields almost nothing, it's likely a scanned PDF
         if (!trimmed || trimmed.length < 50) {
-            throw new Error(
-                'This PDF contains very little readable text. It may be image-based — try uploading a photo/screenshot instead.'
-            )
+            console.log('📄 PDF contains minimal text. Attempting AI Vision OCR fallback...')
+            return await extractTextFromPDFViaOCR(pdf)
         }
 
         return trimmed
     } catch (error) {
-        if (error.message.includes('readable text') || error.message.includes('image-based')) throw error
-        if (error.message.includes('Invalid PDF')) throw new Error('Invalid PDF file. Please ensure the file is not corrupted.')
-        if (error.message.includes('password')) throw new Error('This PDF is password-protected. Please use an unprotected PDF.')
+        console.error('PDF native extraction error:', error)
+        
+        // Handle specific errors that shouldn't trigger OCR
+        const msg = (error.message || '').toLowerCase()
+        if (msg.includes('password')) {
+            throw new Error('This PDF is password-protected. Please use an unprotected PDF.')
+        }
+        if (msg.includes('invalid pdf')) {
+            throw new Error('Invalid PDF file. Please ensure the file is not corrupted.')
+        }
+
+        // For other errors, try OCR fallback as a last resort if we have a PDF object
+        if (pdf) {
+            try {
+                return await extractTextFromPDFViaOCR(pdf)
+            } catch (ocrErr) {
+                console.error('OCR Fallback also failed:', ocrErr)
+            }
+        }
+        
         throw new Error('Failed to extract PDF text. Try a text-based PDF or upload a photo of the page instead.')
+    }
+}
+
+/**
+ * Renders PDF pages to images and uses Gemini Vision to extract text.
+ * Limits extraction to first 5 pages for performance and cost.
+ */
+async function extractTextFromPDFViaOCR(pdf) {
+    try {
+        const pagesToOCR = Math.min(pdf.numPages, 5) // Process up to 5 pages
+        let combinedText = ''
+
+        for (let i = 1; i <= pagesToOCR; i++) {
+            const page = await pdf.getPage(i)
+            const viewport = page.getViewport({ scale: 2.0 }) // High res for better OCR
+            
+            const canvas = document.createElement('canvas')
+            const context = canvas.getContext('2d')
+            canvas.height = viewport.height
+            canvas.width = viewport.width
+
+            await page.render({
+                canvasContext: context,
+                viewport: viewport
+            }).promise
+
+            const dataUrl = canvas.toDataURL('image/jpeg', 0.9)
+            const base64 = dataUrl.split(',')[1]
+
+            const pageText = await performGeminiOCR(base64, 'image/jpeg')
+            combinedText += `--- Page ${i} ---\n${pageText}\n\n`
+            
+            // Clean up
+            canvas.width = 0
+            canvas.height = 0
+        }
+
+        if (!combinedText.trim() || combinedText.length < 50) {
+            throw new Error('AI Vision could not find readable text in this PDF.')
+        }
+
+        return combinedText.trim()
+    } catch (error) {
+        console.error('extractTextFromPDFViaOCR error:', error)
+        throw new Error('This PDF appears to be image-based and AI Vision failed to read it. Try a clearer upload or a text-based version.')
     }
 }
 
@@ -111,49 +174,16 @@ export async function extractTextFromTextFile(file) {
 /**
  * Phase 5: OCR — Convert an image (photo of notes, textbook page, whiteboard)
  * into structured text using Gemini's vision capability.
- * @param {File} imageFile
- * @returns {Promise<string>}
  */
 export async function extractTextFromImage(imageFile) {
     try {
-        const { GoogleGenerativeAI } = await import('@google/generative-ai')
-        const API_KEY = import.meta.env.VITE_GEMINI_API_KEY
-        if (!API_KEY) throw new Error('Gemini API key missing')
-
-        const genAI = new GoogleGenerativeAI(API_KEY)
-        const model = genAI.getGenerativeModel(
-            { model: 'gemini-2.5-flash' },
-            { apiVersion: 'v1beta' }
-        )
-
-        // Convert file to base64
         const arrayBuffer = await imageFile.arrayBuffer()
         const base64 = btoa(
             new Uint8Array(arrayBuffer).reduce((acc, byte) => acc + String.fromCharCode(byte), '')
         )
 
-        const prompt = `You are an expert OCR engine. Extract ALL text from this image as accurately as possible.
+        const text = await performGeminiOCR(base64, imageFile.type)
         
-Instructions:
-- Preserve the original structure and formatting as much as possible
-- Include headings, bullet points, numbered lists, and paragraphs
-- If the image contains a table, represent it in a clear text format
-- If handwriting is present, do your best to transcribe it accurately
-- Output ONLY the extracted text — no commentary, no preamble
-
-Extract all text from the image now:`
-
-        const result = await model.generateContent([
-            prompt,
-            {
-                inlineData: {
-                    data: base64,
-                    mimeType: imageFile.type
-                }
-            }
-        ])
-
-        const text = result.response.text().trim()
         if (!text || text.length < 20) {
             throw new Error('No readable text found in this image. Please ensure the image is clear and well-lit.')
         }
@@ -164,6 +194,42 @@ Extract all text from the image now:`
         if (error.message.includes('No readable text')) throw error
         throw new Error('Failed to extract text from image. Please ensure the image is clear and try again.')
     }
+}
+
+/**
+ * Shared helper to call Gemini Vision for OCR tasks.
+ */
+async function performGeminiOCR(base64Data, mimeType) {
+    const { GoogleGenerativeAI } = await import('@google/generative-ai')
+    const API_KEY = import.meta.env.VITE_GEMINI_API_KEY
+    if (!API_KEY) throw new Error('Gemini API key missing')
+
+    const genAI = new GoogleGenerativeAI(API_KEY)
+    const model = genAI.getGenerativeModel(
+        { model: 'gemini-2.5-flash' },
+        { apiVersion: 'v1' }
+    )
+
+    const prompt = `You are an expert OCR engine. Extract ALL text from this document as accurately as possible.
+    
+Instructions:
+- Preserve the original structure and formatting as much as possible
+- Include headings, bullet points, numbered lists, and paragraphs
+- If the document contains a table, represent it in a clear text format
+- If handwriting is present, do your best to transcribe it accurately
+- Output ONLY the extracted text — no commentary, no preamble`
+
+    const result = await model.generateContent([
+        prompt,
+        {
+            inlineData: {
+                data: base64Data,
+                mimeType: mimeType
+            }
+        }
+    ])
+
+    return result.response.text().trim()
 }
 
 // ─── DOCX Basic Extraction ────────────────────────────────────────────────────

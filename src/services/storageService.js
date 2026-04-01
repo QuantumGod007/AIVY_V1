@@ -236,7 +236,7 @@ export async function getQuizResults() {
  * Archive current session (document + quiz + results)
  * Preserves all learning activity before starting new document
  */
-export async function archiveCurrentSession() {
+export async function archiveCurrentSession(summary = '') {
     try {
         const userId = getUserId()
         const sessionId = Date.now().toString()
@@ -249,15 +249,23 @@ export async function archiveCurrentSession() {
             return null
         }
 
+        const score = currentQuiz.score || 0
+        const total = currentQuiz.questions?.length || 0
+        const acc = total > 0 ? Math.round((score / total) * 100) : 0
+
         // Create session archive
         const sessionRef = doc(db, 'users', userId, 'sessions', sessionId)
         const sessionData = safeTruncate({
             id: sessionId,
             documentName: currentQuiz.documentName,
             documentText: currentQuiz.documentText,
-            isPrerequisiteSurvey: currentQuiz.isPrerequisiteSurvey,
-            questions: currentQuiz.questions,
+            isPrerequisiteSurvey: currentQuiz.isPrerequisiteSurvey || false,
+            questions: currentQuiz.questions || [],
             userAnswers: currentQuiz.userAnswers || {},
+            score: score,
+            total: total,
+            accuracy: acc,
+            summary: summary,
             completedAt: currentQuiz.completedAt || null,
             archivedAt: serverTimestamp()
         })

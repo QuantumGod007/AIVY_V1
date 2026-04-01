@@ -1,7 +1,7 @@
 // List available models
 import { GoogleGenerativeAI } from '@google/generative-ai'
 
-const API_KEY = 'AIzaSyBchN3P5wNzmeiVcwd8HBcLdwQiL1j7D0U'
+const API_KEY = process.env.VITE_GEMINI_API_KEY
 
 async function listModels() {
     console.log('📋 Fetching list of available Gemini models...\n')

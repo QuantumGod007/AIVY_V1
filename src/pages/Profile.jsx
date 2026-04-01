@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import Sidebar from '../components/Sidebar'
 import { getUserStats, getBadgeDetails, BADGES } from '../services/gamificationService'
+import { getArchivedSessions } from '../services/storageService'
+import { analyzeGlobalProgress } from '../services/geminiService'
 import { auth } from '../firebase'
 import { 
     Award, 
@@ -17,29 +19,45 @@ import {
     Activity,
     BarChart3,
     Clock,
-    Medal
+    Medal,
+    Brain,
+    Sparkles
 } from 'lucide-react'
 
 function Profile() {
     const [stats, setStats] = useState(null)
+    const [sessions, setSessions] = useState([])
+    const [aiInsights, setAiInsights] = useState(null)
     const [loading, setLoading] = useState(true)
+    const [aiLoading, setAiLoading] = useState(false)
     const user = auth.currentUser
     const avatar = user?.email?.charAt(0).toUpperCase() || 'U'
     const name = user?.displayName || user?.email?.split('@')[0] || 'Learner'
 
     useEffect(() => {
-        const loadStats = async () => {
+        const loadAllData = async () => {
             setLoading(true)
             try {
-                const data = await getUserStats()
-                setStats(data)
+                const statsData = await getUserStats()
+                setStats(statsData)
+
+                const sessionData = await getArchivedSessions()
+                setSessions(sessionData)
+
+                // If sessions exist, triggers AI analysis
+                if (sessionData.length > 0) {
+                    setAiLoading(true)
+                    const insights = await analyzeGlobalProgress(sessionData, statsData)
+                    setAiInsights(insights)
+                    setAiLoading(false)
+                }
             } catch (err) {
-                console.error(err)
+                console.error('Profile load error:', err)
             } finally {
                 setLoading(false)
             }
         }
-        loadStats()
+        loadAllData()
     }, [])
 
     if (loading) {
@@ -149,51 +167,88 @@ function Profile() {
                         </div>
                     </div>
 
-                    {/* Activity Summary Mockup */}
+                    {/* AI Insights Section */}
                     <div className="profile-grid">
                       <div className="profile-card">
                         <div className="card-header-minimal">
-                          <h3>Learning Focus</h3>
-                          <BarChart3 size={18} className="text-muted" />
+                          <h3 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                            <Brain size={18} style={{ color: 'var(--color-accent)' }} /> 
+                            AI Learning Profile
+                          </h3>
+                          {aiLoading && <Loader2 className="processing-spinner" size={14} />}
                         </div>
-                        <div className="focus-chart-mock">
-                          <div className="focus-row">
-                            <span>Accuracy</span>
-                            <div className="focus-bar"><div className="focus-bar-fill" style={{ width: '85%', background: 'var(--color-success)' }}></div></div>
-                            <span>85%</span>
+                        {aiInsights ? (
+                          <div className="focus-chart-mock">
+                             <div style={{ marginBottom: '1rem', padding: '0.75rem', background: 'var(--color-bg-secondary)', borderRadius: '12px', border: '1px solid var(--color-border)' }}>
+                                <div style={{ fontSize: '0.7rem', color: 'var(--color-text-muted)', textTransform: 'uppercase', marginBottom: '0.25rem' }}>Learning Style</div>
+                                <div style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--color-accent)' }}>{aiInsights.learningStyle}</div>
+                             </div>
+
+                             <div className="focus-row">
+                              <span>Consistency</span>
+                              <div className="focus-bar"><div className="focus-bar-fill" style={{ width: `${aiInsights.consistencyScore || 50}%`, background: 'var(--color-accent)' }}></div></div>
+                              <span>{aiInsights.consistencyScore || 50}%</span>
+                            </div>
+                            <div className="focus-row">
+                              <span>Retention</span>
+                              <div className="focus-bar"><div className="focus-bar-fill" style={{ width: `${aiInsights.retentionScore || 50}%`, background: 'var(--color-accent-secondary)' }}></div></div>
+                              <span>{aiInsights.retentionScore || 50}%</span>
+                            </div>
+
+                            <div style={{ marginTop: '1rem' }}>
+                                <div style={{ fontSize: '0.7rem', color: 'var(--color-text-muted)', textTransform: 'uppercase', marginBottom: '0.5rem' }}>Topical Strengths</div>
+                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
+                                    {aiInsights.topicalStrengths?.map((s, i) => (
+                                        <span key={i} style={{ fontSize: '0.75rem', padding: '0.25rem 0.6rem', background: 'rgba(52,211,153,0.1)', color: '#34d399', borderRadius: '100px', border: '1px solid rgba(52,211,153,0.2)' }}>{s}</span>
+                                    ))}
+                                </div>
+                            </div>
                           </div>
-                          <div className="focus-row">
-                            <span>Consistency</span>
-                            <div className="focus-bar"><div className="focus-bar-fill" style={{ width: '70%', background: 'var(--color-accent)' }}></div></div>
-                            <span>70%</span>
+                        ) : (
+                          <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--color-text-muted)', fontSize: '0.85rem' }}>
+                            <Activity size={24} style={{ opacity: 0.3, marginBottom: '0.5rem' }} />
+                            <p>{aiLoading ? 'Analyzing your progress...' : 'Complete sessions to unlock AI insights'}</p>
                           </div>
-                          <div className="focus-row">
-                            <span>Retention</span>
-                            <div className="focus-bar"><div className="focus-bar-fill" style={{ width: '92%', background: 'var(--color-accent-secondary)' }}></div></div>
-                            <span>92%</span>
-                          </div>
-                        </div>
+                        )}
                       </div>
                       
                       <div className="profile-card">
                         <div className="card-header-minimal">
-                          <h3>Recent Milestones</h3>
-                          <Medal size={18} className="text-muted" />
+                          <h3 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                            <Target size={18} style={{ color: 'var(--color-warning)' }} /> 
+                            AI Growth Strategy
+                          </h3>
                         </div>
-                        <div className="milestones-list">
-                          <div className="milestone-item">
-                            <Clock size={14} className="text-muted" />
-                            <span>Reached a 3-day study streak</span>
+                        {aiInsights ? (
+                           <div className="milestones-list">
+                              <div className="milestone-item" style={{ flexDirection: 'column', alignItems: 'flex-start', border: 'none' }}>
+                                <div style={{ fontSize: '0.7rem', color: 'var(--color-text-muted)', textTransform: 'uppercase', marginBottom: '0.4rem' }}>Mastery Summary</div>
+                                <p style={{ fontSize: '0.85rem', lineHeight: 1.5, color: 'var(--color-text-primary)', margin: 0 }}>{aiInsights.masteryInsights}</p>
+                              </div>
+                              
+                              <div style={{ marginTop: '0.5rem', padding: '1rem', background: 'rgba(99,102,241,0.05)', borderRadius: '14px', border: '1px solid rgba(99,102,241,0.1)' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
+                                    <Sparkles size={14} style={{ color: 'var(--color-accent)' }} />
+                                    <span style={{ fontSize: '0.7rem', fontWeight: 700, color: 'var(--color-accent)', textTransform: 'uppercase' }}>Next Major Goal</span>
+                                </div>
+                                <p style={{ fontSize: '0.875rem', fontWeight: 600, color: 'var(--color-text-primary)', margin: 0 }}>{aiInsights.nextBigGoal}</p>
+                              </div>
+
+                              <div style={{ marginTop: '0.5rem' }}>
+                                <div style={{ fontSize: '0.7rem', color: 'var(--color-text-muted)', textTransform: 'uppercase', marginBottom: '0.5rem' }}>Focus Required</div>
+                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
+                                    {aiInsights.improvementAreas?.map((a, i) => (
+                                        <span key={i} style={{ fontSize: '0.75rem', padding: '0.25rem 0.6rem', background: 'rgba(248,113,113,0.1)', color: '#f87171', borderRadius: '100px', border: '1px solid rgba(248,113,113,0.2)' }}>{a}</span>
+                                    ))}
+                                </div>
+                              </div>
+                           </div>
+                        ) : (
+                          <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--color-text-muted)', fontSize: '0.85rem' }}>
+                            <TrendingUp size={24} style={{ opacity: 0.3, marginBottom: '0.5rem' }} />
+                            <p>Unlock personalized goals by studying more topics</p>
                           </div>
-                          <div className="milestone-item">
-                            <Medal size={14} className="text-accent" />
-                            <span>First perfect quiz score!</span>
-                          </div>
-                          <div className="milestone-item">
-                            <Activity size={14} className="text-muted" />
-                            <span>Finished Topic: Data Structures</span>
-                          </div>
-                        </div>
+                        )}
                       </div>
                     </div>
                 </div>

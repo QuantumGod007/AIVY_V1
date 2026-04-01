@@ -90,31 +90,53 @@ function Sessions() {
                 ) : (
                     <div className="sessions-list fade-in">
                         {filteredSessions.map((session) => (
-                            <div key={session.id} className="session-card">
-                                <div className="session-icon">
-                                    <FileText size={24} />
-                                </div>
-                                <div className="session-info">
-                                    <h3 className="session-name">{session.documentName || 'Untitled Document'}</h3>
-                                    <div className="session-meta">
-                                        <span><Calendar size={12} /> {new Date(session.archivedAt).toLocaleDateString()}</span>
-                                        <span><Brain size={12} /> {session.questions?.length || 0} Questions</span>
+                            <div key={session.id} className="session-card" style={{ flexDirection: 'column', alignItems: 'stretch', gap: '0.75rem' }}>
+                                <div style={{ display: 'flex', alignItems: 'center' }}>
+                                    <div className="session-icon">
+                                        <FileText size={24} />
+                                    </div>
+                                    <div className="session-info">
+                                        <h3 className="session-name">{session.documentName || 'Untitled Document'}</h3>
+                                        <div className="session-meta">
+                                            <span><Calendar size={12} /> {new Date(session.archivedAt).toLocaleDateString()}</span>
+                                            <span><Brain size={12} /> {session.questions?.length || 0} Questions</span>
+                                            {session.accuracy !== undefined && (
+                                                <span style={{ color: session.accuracy >= 70 ? 'var(--color-success)' : 'var(--color-warning)', fontWeight: 700 }}>
+                                                    {session.accuracy}% Accuracy
+                                                </span>
+                                            )}
+                                        </div>
+                                    </div>
+                                    <div className="session-actions">
+                                        <button 
+                                            className="btn btn-secondary btn-sm btn-icon"
+                                            onClick={() => handleRestore(session.id)}
+                                            disabled={restoring === session.id}
+                                        >
+                                            {restoring === session.id ? (
+                                                <Loader2 size={14} className="processing-spinner" />
+                                            ) : (
+                                                <RefreshCw size={14} />
+                                            )}
+                                            Restore
+                                        </button>
                                     </div>
                                 </div>
-                                <div className="session-actions">
-                                    <button 
-                                        className="btn btn-secondary btn-sm btn-icon"
-                                        onClick={() => handleRestore(session.id)}
-                                        disabled={restoring === session.id}
-                                    >
-                                        {restoring === session.id ? (
-                                            <Loader2 size={14} className="processing-spinner" />
-                                        ) : (
-                                            <RefreshCw size={14} />
-                                        )}
-                                        Restore
-                                    </button>
-                                </div>
+                                {session.summary && (
+                                    <div style={{ 
+                                        padding: '0.875rem 1rem', 
+                                        background: 'var(--color-bg-secondary)', 
+                                        borderRadius: '12px', 
+                                        borderLeft: '4px solid var(--color-accent)',
+                                        fontSize: '0.85rem',
+                                        lineHeight: 1.5,
+                                        color: 'var(--color-text-muted)',
+                                        whiteSpace: 'pre-line'
+                                    }}>
+                                        <div style={{ fontSize: '0.65rem', fontWeight: 800, textTransform: 'uppercase', marginBottom: '0.4rem', color: 'var(--color-accent)' }}>AI Key Takeaways</div>
+                                        {session.summary}
+                                    </div>
+                                )}
                             </div>
                         ))}
                     </div>

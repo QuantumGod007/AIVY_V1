@@ -14,17 +14,19 @@ import {
     ChevronRight,
     Brain,
     Sun,
-    Moon
+    Moon,
+    User
 } from 'lucide-react'
 
 const NAV_ITEMS = [
     { to: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
-    { to: '/ai-tutor', icon: MessageSquare, label: 'AI Tutor' },
+    { to: '/ai-tutor', icon: MessageSquare, label: 'Intelligence' },
     { to: '/study-planner', icon: CalendarDays, label: 'Study Planner' },
     { to: '/flashcards', icon: CreditCard, label: 'Flashcards' },
     { to: '/sessions', icon: Brain, label: 'Sessions' },
     { to: '/leaderboard', icon: Trophy, label: 'Leaderboard' },
     { to: '/progress', icon: TrendingUp, label: 'Progress' },
+    { to: '/profile', icon: User, label: 'Profile' },
 ]
 
 function Sidebar() {

@@ -3,7 +3,7 @@ import { signOut, onAuthStateChanged } from 'firebase/auth'
 import { auth } from '../firebase'
 import { useNavigate, Link } from 'react-router-dom'
 import { extractTextFromFile, isImageFile } from '../services/pdfService'
-import { generatePrerequisiteSurvey, generateStudyGuidance, generateAdaptiveQuiz, generateTopicWiseSummary } from '../services/geminiService'
+import { generatePrerequisiteSurvey, generateStudyGuidance, generateAdaptiveQuiz, generateTopicWiseSummary, summarizeSession } from '../services/geminiService'
 import { saveCurrentQuiz, getCurrentQuiz, archiveCurrentSession } from '../services/storageService'
 import { initializeUserStats } from '../services/gamificationService'
 import Gamification from '../components/Gamification'
@@ -306,10 +306,14 @@ function Dashboard() {
   const handleConfirmNewDocument = async () => {
     try {
       setIsProcessing(true)
+      setProcessingStage('Generating AI takeaways for your session...')
+      
+      const summary = currentQuiz ? await summarizeSession(currentQuiz) : ''
+
       setProcessingStage('Archiving current session...')
 
-      // Archive current session
-      await archiveCurrentSession()
+      // Archive current session with AI summary
+      await archiveCurrentSession(summary)
 
       // Reset state
       setCurrentQuiz(null)

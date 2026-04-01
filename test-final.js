@@ -1,7 +1,7 @@
 // Final test with the correct model
 import { GoogleGenerativeAI } from '@google/generative-ai'
 
-const API_KEY = 'AIzaSyBchN3P5wNzmeiVcwd8HBcLdwQiL1j7D0U'
+const API_KEY = process.env.VITE_GEMINI_API_KEY
 
 async function finalTest() {
     console.log('🎯 Final Test: gemini-2.5-flash\n')
