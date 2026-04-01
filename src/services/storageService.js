@@ -214,7 +214,8 @@ export async function getQuizResults() {
     try {
         const userId = getUserId()
         const resultsRef = collection(db, 'users', userId, 'results')
-        const querySnapshot = await getDocs(resultsRef)
+        const q = query(resultsRef, orderBy('createdAt', 'desc'))
+        const querySnapshot = await getDocs(q)
 
         const results = []
         querySnapshot.forEach((doc) => {
@@ -228,6 +229,35 @@ export async function getQuizResults() {
         return results
     } catch (error) {
         console.error('Error getting quiz results:', error)
+        return []
+    }
+}
+
+/**
+ * Get quiz results for a specific document
+ */
+export async function getQuizResultsByDocument(documentName) {
+    try {
+        const userId = getUserId()
+        const resultsRef = collection(db, 'users', userId, 'results')
+        const q = query(
+            resultsRef, 
+            where('documentName', '==', documentName),
+            orderBy('createdAt', 'desc')
+        )
+        const snap = await getDocs(q)
+        const results = []
+        snap.forEach(d => {
+            const data = d.data()
+            results.push({ 
+                ...data, 
+                id: d.id,
+                createdAt: data.createdAt?.toDate?.()?.toISOString() || data.createdAt
+            })
+        })
+        return results
+    } catch (error) {
+        console.error('getQuizResultsByDocument:', error)
         return []
     }
 }

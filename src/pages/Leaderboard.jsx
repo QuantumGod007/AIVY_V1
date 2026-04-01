@@ -1,40 +1,60 @@
 import { useState, useEffect, useRef } from 'react'
 import Sidebar from '../components/Sidebar'
-import { subscribeToLeaderboard, getUserStats } from '../services/gamificationService'
+import { subscribeToLeaderboard, subscribeToTopicLeaderboard, getUserStats } from '../services/gamificationService'
+import { getQuizResults } from '../services/storageService'
 import { auth } from '../firebase'
-import { Trophy, Crown, Wifi, WifiOff } from 'lucide-react'
+import { Trophy, Crown, Wifi, WifiOff, Globe, BookText, ChevronDown } from 'lucide-react'
 
 function Leaderboard() {
+    const [mode, setMode] = useState('global') // global | topic
     const [board, setBoard] = useState([])
     const [loading, setLoading] = useState(true)
     const [live, setLive] = useState(false)
     const [userStats, setUserStats] = useState(null)
+    const [topics, setTopics] = useState([])
+    const [selectedTopic, setSelectedTopic] = useState('')
     const unsubRef = useRef(null)
     const user = auth.currentUser
 
     useEffect(() => {
         // Load current user stats
         getUserStats().then(setUserStats).catch(console.error)
-
-        // Subscribe to real-time leaderboard
-        setLoading(true)
-        unsubRef.current = subscribeToLeaderboard((data) => {
-            setBoard(data)
-            setLoading(false)
-            setLive(true)
+        
+        // Load studied topics for the filter
+        getQuizResults().then(results => {
+            const uniqueTopics = [...new Set(results.map(r => r.documentName))].filter(Boolean)
+            setTopics(uniqueTopics)
+            if (uniqueTopics.length > 0 && !selectedTopic) {
+                setSelectedTopic(uniqueTopics[0])
+            }
         })
+    }, [])
 
-        // Handle offline — if no data after 6s, show empty state
-        const timeout = setTimeout(() => {
+    useEffect(() => {
+        setLoading(true)
+        if (unsubRef.current) unsubRef.current()
+
+        if (mode === 'global') {
+            unsubRef.current = subscribeToLeaderboard((data) => {
+                setBoard(data)
+                setLoading(false)
+                setLive(true)
+            })
+        } else if (mode === 'topic' && selectedTopic) {
+            unsubRef.current = subscribeToTopicLeaderboard(selectedTopic, (data) => {
+                setBoard(data)
+                setLoading(false)
+                setLive(true)
+            })
+        } else {
             setLoading(false)
-        }, 6000)
+        }
 
         return () => {
-            clearTimeout(timeout)
             if (unsubRef.current) unsubRef.current()
             setLive(false)
         }
-    }, [])
+    }, [mode, selectedTopic])
 
     const userRank = board.findIndex(u => u.userId === user?.uid) + 1
 
@@ -50,13 +70,62 @@ function Leaderboard() {
         <div className="app-layout">
             <Sidebar />
             <main className="app-main">
-                <div className="page-header">
+                <div className="page-header" style={{ marginBottom: '1.5rem' }}>
                     <div>
                         <h1 className="page-title">Leaderboard</h1>
-                        <p className="page-subtitle">Top learners ranked by experience points</p>
+                        <p className="page-subtitle">
+                            {mode === 'global' ? 'Top learners globally' : `Rankings for ${selectedTopic}`}
+                        </p>
                     </div>
+
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                        {/* Live indicator */}
+                        {/* Mode Switcher */}
+                        <div style={{
+                            display: 'flex', background: 'var(--color-bg-elevated)',
+                            padding: '0.2rem', borderRadius: '100px', border: '1px solid var(--color-border)'
+                        }}>
+                            {[
+                                { id: 'global', icon: Globe, label: 'Global' },
+                                { id: 'topic', icon: BookText, label: 'Subject' }
+                            ].map(btn => (
+                                <button
+                                    key={btn.id}
+                                    onClick={() => setMode(btn.id)}
+                                    style={{
+                                        display: 'flex', alignItems: 'center', gap: '0.4rem',
+                                        padding: '0.35rem 0.875rem', borderRadius: '100px',
+                                        border: 'none', cursor: 'pointer', fontFamily: 'inherit',
+                                        fontSize: '0.75rem', fontWeight: 600,
+                                        background: mode === btn.id ? 'var(--color-accent)' : 'transparent',
+                                        color: mode === btn.id ? '#fff' : 'var(--color-text-muted)',
+                                        transition: 'all 0.2s ease'
+                                    }}
+                                >
+                                    <btn.icon size={13} /> {btn.label}
+                                </button>
+                            ))}
+                        </div>
+
+                        {mode === 'topic' && topics.length > 0 && (
+                            <div style={{ position: 'relative' }}>
+                                <select 
+                                    value={selectedTopic}
+                                    onChange={(e) => setSelectedTopic(e.target.value)}
+                                    style={{
+                                        padding: '0.45rem 1.75rem 0.45rem 0.875rem',
+                                        background: 'var(--color-bg-elevated)',
+                                        border: '1px solid var(--color-border)',
+                                        borderRadius: '10px',
+                                        fontFamily: 'inherit', fontWeight: 600, fontSize: '0.75rem',
+                                        color: 'var(--color-text-primary)', cursor: 'pointer', appearance: 'none'
+                                    }}
+                                >
+                                    {topics.map(t => <option key={t} value={t}>{t}</option>)}
+                                </select>
+                                <ChevronDown size={14} style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none', color: 'var(--color-text-muted)' }} />
+                            </div>
+                        )}
+                        
                         <div
                             title={live ? 'Real-time updates active' : 'Connecting...'}
                             style={{
@@ -67,23 +136,13 @@ function Leaderboard() {
                                 fontWeight: 600,
                                 color: live ? 'var(--color-success, #22c55e)' : 'var(--color-text-muted)',
                                 background: 'var(--color-bg-elevated)',
-                                padding: '0.3rem 0.75rem',
+                                padding: '0.4rem 0.875rem',
                                 borderRadius: '100px',
                                 border: '1px solid var(--color-border)'
                             }}
                         >
-                            {live
-                                ? <><Wifi size={13} /> Live</>
-                                : <><WifiOff size={13} /> Connecting</>
-                            }
+                            {live ? <><Wifi size={13} /> Live</> : <><WifiOff size={13} /> Offline</>}
                         </div>
-
-                        {userRank > 0 && (
-                            <div className="your-rank-badge">
-                                <Trophy size={16} />
-                                <span>Your Rank: #{userRank}</span>
-                            </div>
-                        )}
                     </div>
                 </div>
 

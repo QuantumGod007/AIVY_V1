@@ -114,6 +114,8 @@ function Progress() {
   const [activeTab, setActiveTab]           = useState('overview') // overview | review
   const [reStudyLoading, setReStudyLoading] = useState(false)
   const [reStudyData, setReStudyData]       = useState(null)
+  const [allResults, setAllResults]         = useState([])
+  const [selectedResultId, setSelectedResultId] = useState(null)
   const [error, setError]                   = useState('')
   const navigate = useNavigate()
   const location = useLocation()
@@ -130,20 +132,21 @@ function Progress() {
           data = location.state.results
         }
 
-        // 2. Firestore fallback — for direct page refresh or history navigation
-        if (!data) {
-          try {
-            const firestoreResults = await getQuizResults()
-            if (firestoreResults?.length > 0) {
-              data = firestoreResults.sort((a, b) =>
-                new Date(b.createdAt || 0) - new Date(a.createdAt || 0)
-              )[0]
-            }
-          } catch (e) { console.warn('Firestore results fetch failed:', e.message) }
+        // 2. Firestore results — show historical list and latest result
+        try {
+          const firestoreResults = await getQuizResults()
+          setAllResults(firestoreResults)
+          
+          if (!data && firestoreResults.length > 0) {
+            data = firestoreResults[0] // Default to latest if no router state
+          }
+        } catch (e) {
+          console.warn('Firestore results fetch failed:', e.message)
         }
 
         if (data) {
           setResults(data)
+          setSelectedResultId(data.id)
           generateSwot(data)
         }
       } catch (err) {
@@ -154,6 +157,18 @@ function Progress() {
     })
     return () => unsub()
   }, [navigate, location.state])
+
+  // Switch result logic
+  const handleSwitchResult = async (id) => {
+    const found = allResults.find(r => r.id === id)
+    if (found) {
+      setResults(found)
+      setSelectedResultId(id)
+      setSwot(null) // Re-trigger SWOT
+      generateSwot(found)
+      setActiveTab('overview')
+    }
+  }
 
   const generateSwot = async (data) => {
     setSwotLoading(true)
@@ -292,11 +307,33 @@ function Progress() {
         }}>
           <ArrowLeft size={16} /> Dashboard
         </button>
-        <span style={{
-          fontSize: '0.75rem', fontWeight: 600, textTransform: 'uppercase',
-          letterSpacing: '0.08em', color: 'var(--color-text-muted)'
-        }}>Quiz Results</span>
-        <div style={{ width: 100 }} />
+        {/* Topic Switcher Dropdown */}
+        <div style={{ position: 'relative' }}>
+          <select 
+            value={selectedResultId || ''} 
+            onChange={(e) => handleSwitchResult(e.target.value)}
+            style={{
+              padding: '0.45rem 1.25rem 0.45rem 0.875rem',
+              background: 'var(--color-bg-elevated)',
+              border: '1px solid var(--color-border)',
+              borderRadius: '100px',
+              fontFamily: 'inherit',
+              fontWeight: 600,
+              fontSize: '0.8rem',
+              color: 'var(--color-text-primary)',
+              cursor: 'pointer',
+              appearance: 'none',
+              maxWidth: '200px'
+            }}
+          >
+            {allResults.map(r => (
+              <option key={r.id} value={r.id}>
+                {r.documentName ? (r.documentName.length > 25 ? r.documentName.substring(0, 25) + '…' : r.documentName) : 'Untitled Quiz'}
+              </option>
+            ))}
+          </select>
+          <ChevronDown size={14} style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none', color: 'var(--color-text-muted)' }} />
+        </div>
       </div>
 
       <div style={{ maxWidth: 800, margin: '0 auto', padding: '2rem 1.5rem' }}>

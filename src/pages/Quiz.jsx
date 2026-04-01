@@ -166,7 +166,7 @@ function Quiz() {
             }
 
             await saveQuizResults(results)
-            await awardQuizXP(correct, totalQuestions)
+            await awardQuizXP(correct, totalQuestions, quizData.documentName || 'General')
             navigate('/progress', { state: { results } })
         } catch (error) {
             console.error('Error submitting quiz:', error)

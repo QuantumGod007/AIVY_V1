@@ -190,14 +190,43 @@ export async function awardSurveyXP() {
     await awardBadge(userId, 'first_steps')
 }
 
-export async function awardQuizXP(score, total) {
-    let totalXP = XP_REWARDS.QUIZ_COMPLETE
+export async function awardQuizXP(score, total, documentName = 'General') {
+    let xpAmount = XP_REWARDS.QUIZ_COMPLETE
     if (score === total) {
-        totalXP += XP_REWARDS.PERFECT_SCORE
+        xpAmount += XP_REWARDS.PERFECT_SCORE
         const userId = getUserId()
         await awardBadge(userId, 'perfect_student')
     }
-    await addXP(totalXP, 'Quiz completed')
+    
+    // Add global XP
+    await addXP(xpAmount, `Quiz completed: ${documentName}`)
+    
+    // Add Topic-Specific XP (Private for stats)
+    try {
+        const userId = getUserId()
+        const topicId = documentName.replace(/[^a-zA-Z0-9]/g, '_')
+        const topicRef = doc(db, 'users', userId, 'gamification', 'topics', 'data', topicId)
+        await setDoc(topicRef, {
+            documentName,
+            totalXP: increment(xpAmount),
+            quizzesCompleted: increment(1),
+            lastActive: serverTimestamp()
+        }, { merge: true })
+
+        // Sync to Global Topic Leaderboard
+        const user = auth.currentUser
+        const globalTopicRef = doc(db, 'leaderboard_topics', topicId, 'rankings', userId)
+        await setDoc(globalTopicRef, {
+            userId,
+            name: user?.displayName || user?.email?.split('@')[0] || 'Student',
+            totalXP: increment(xpAmount),
+            topicName: documentName,
+            updatedAt: serverTimestamp()
+        }, { merge: true })
+    } catch (err) {
+        console.warn('awardQuizXP topic tracking error:', err.message)
+    }
+
     const userId = getUserId()
     await awardBadge(userId, 'quiz_master')
 }
@@ -299,4 +328,27 @@ export function getBadgeDetails(badgeIds) {
     return badgeIds
         .map(id => Object.values(BADGES).find(b => b.id === id) || null)
         .filter(Boolean)
+}
+
+/**
+ * Real-time leaderboard subscription for a SPECIFIC TOPIC.
+ */
+export function subscribeToTopicLeaderboard(topicName, callback) {
+    try {
+        const topicId = topicName.replace(/[^a-zA-Z0-9]/g, '_')
+        const lb = collection(db, 'leaderboard_topics', topicId, 'rankings')
+        const q = query(lb, orderBy('totalXP', 'desc'), limit(15))
+        
+        return onSnapshot(q, (snap) => {
+            const results = []
+            snap.forEach(d => results.push({ ...d.data(), userId: d.id }))
+            callback(results)
+        }, (err) => {
+            console.error('topic leaderboard error:', err)
+            callback([])
+        })
+    } catch (err) {
+        console.error('subscribeToTopicLeaderboard:', err)
+        return () => {}
+    }
 }
