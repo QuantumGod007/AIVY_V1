@@ -1,14 +1,15 @@
 import { useState, useEffect } from 'react'
-import { signOut } from 'firebase/auth'
+import { signOut, onAuthStateChanged } from 'firebase/auth'
 import { auth } from '../firebase'
 import { useNavigate, Link } from 'react-router-dom'
-import { extractTextFromFile } from '../services/pdfService'
+import { extractTextFromFile, isImageFile } from '../services/pdfService'
 import { generatePrerequisiteSurvey, generateStudyGuidance, generateAdaptiveQuiz, generateTopicWiseSummary } from '../services/geminiService'
 import { saveCurrentQuiz, getCurrentQuiz, archiveCurrentSession } from '../services/storageService'
 import { initializeUserStats } from '../services/gamificationService'
 import Gamification from '../components/Gamification'
 import Sidebar from '../components/Sidebar'
 import GamificationSummary from '../components/GamificationSummary'
+import { getArchivedSessions, restoreSession } from '../services/storageService'
 import {
   Upload,
   FileText,
@@ -36,7 +37,10 @@ import {
   MessageSquare,
   CalendarDays,
   CreditCard,
-  Trophy
+  Trophy,
+  Camera,
+  History,
+  ChevronLeft
 } from 'lucide-react'
 
 // Dashboard States
@@ -57,6 +61,9 @@ function Dashboard() {
   const [selectedFile, setSelectedFile] = useState(null)
   const [processingStage, setProcessingStage] = useState('')
   const [showNewDocModal, setShowNewDocModal] = useState(false)
+  const [recentSessions, setRecentSessions] = useState([])
+  const [inputMode, setInputMode] = useState('upload') // 'upload' | 'paste'
+  const [pastedText, setPastedText] = useState('')
 
   const navigate = useNavigate()
   const user = auth.currentUser
@@ -83,49 +90,44 @@ function Dashboard() {
 
 
   useEffect(() => {
-    const loadQuizData = async () => {
+    const unsub = onAuthStateChanged(auth, async (user) => {
+      if (!user) { setIsLoading(false); navigate('/login'); return }
       try {
         setIsLoading(true)
-
-        // Initialize gamification stats for user
-        if (user?.uid) {
-          await initializeUserStats(user.uid)
-        }
+        await initializeUserStats(user.uid)
 
         const quiz = await getCurrentQuiz()
         setCurrentQuiz(quiz)
 
-        // Determine dashboard state based on quiz data
+        const sessions = await getArchivedSessions()
+        setRecentSessions(sessions.slice(0, 3))
+
         if (!quiz) {
           setDashboardState(DASHBOARD_STATES.NO_DOCUMENT)
         } else if (quiz.questions && quiz.questions.length > 0) {
-          // Check if survey was completed
-          if (quiz.userAnswers && Object.keys(quiz.userAnswers).length > 0) {
-            // Check if it's a prerequisite survey or adaptive quiz
+          const answeredCount = Object.keys(quiz.userAnswers || {}).length
+          if (answeredCount > 0) {
             if (quiz.isPrerequisiteSurvey) {
               setDashboardState(DASHBOARD_STATES.SURVEY_COMPLETED)
             } else {
-              // Adaptive quiz in progress or completed
-              const allAnswered = Object.keys(quiz.userAnswers).length === quiz.questions.length
-              if (allAnswered) {
-                setDashboardState(DASHBOARD_STATES.QUIZ_COMPLETED)
-              } else {
-                setDashboardState(DASHBOARD_STATES.QUIZ_IN_PROGRESS)
-              }
+              const allAnswered = answeredCount >= quiz.questions.length
+              setDashboardState(allAnswered
+                ? DASHBOARD_STATES.QUIZ_COMPLETED
+                : DASHBOARD_STATES.QUIZ_IN_PROGRESS)
             }
           } else {
-            // Survey generated but not taken
             setDashboardState(DASHBOARD_STATES.SURVEY_READY)
           }
+        } else {
+          setDashboardState(DASHBOARD_STATES.NO_DOCUMENT)
         }
       } catch (error) {
-        console.error('Error loading quiz data:', error)
+        console.error('Error loading dashboard:', error)
       } finally {
         setIsLoading(false)
       }
-    }
-
-    loadQuizData()
+    })
+    return () => unsub()
   }, [])
 
   const handleLogout = async () => {
@@ -142,23 +144,38 @@ function Dashboard() {
     if (!file) return
 
     setSelectedFile(file)
+    setInputMode('upload')
     setError('')
     setSuccess('')
   }
 
   const handleUpload = async () => {
-    if (!selectedFile) {
+    if (inputMode === 'upload' && !selectedFile) {
       setError('Please select a file first')
+      return
+    }
+    if (inputMode === 'paste' && (!pastedText || pastedText.length < 100)) {
+      setError('Please paste at least 100 characters of study material')
       return
     }
 
     setIsProcessing(true)
     setError('')
     setSuccess('')
-    setProcessingStage('Extracting text from document...')
+    if (inputMode === 'upload') {
+      const isImg = isImageFile(selectedFile)
+      setProcessingStage(isImg ? 'Reading image with AI Vision (OCR)...' : 'Extracting text from document...')
+    } else {
+      setProcessingStage('Processing pasted text...')
+    }
 
     try {
-      const extractedText = await extractTextFromFile(selectedFile)
+      let extractedText = ''
+      if (inputMode === 'upload') {
+        extractedText = await extractTextFromFile(selectedFile)
+      } else {
+        extractedText = pastedText
+      }
 
       if (!extractedText || extractedText.length < 100) {
         throw new Error('Document appears to be empty or too short')
@@ -180,7 +197,7 @@ function Dashboard() {
       setProcessingStage('Saving survey to database...')
 
       const quizData = {
-        documentName: selectedFile.name,
+        documentName: inputMode === 'upload' ? selectedFile.name : `Pasted Content (${new Date().toLocaleDateString()})`,
         documentText: extractedText,
         questions: surveyQuestions,
         isPrerequisiteSurvey: true,
@@ -197,6 +214,7 @@ function Dashboard() {
       setProcessingStage('')
 
       setSelectedFile(null)
+      setPastedText('')
       const fileInput = document.getElementById('file-upload')
       if (fileInput) fileInput.value = ''
 
@@ -225,53 +243,54 @@ function Dashboard() {
 
   const handleStartAdaptiveQuiz = async () => {
     try {
-      console.log('Starting adaptive quiz generation...')
       setIsProcessing(true)
       setProcessingStage('Generating adaptive quiz based on your performance...')
       setError('')
 
-      // Verify we have study guidance
-      if (!currentQuiz?.studyGuidance) {
-        setError('Study guidance not available. Please complete the survey first.')
-        setIsProcessing(false)
-        return
+      const surveyQuestions = currentQuiz?.questions || []
+      const surveyAnswers   = currentQuiz?.userAnswers || {}
+
+      // Build studyGuidance inline if not saved (never block on this)
+      let guidance = currentQuiz?.studyGuidance
+      if (!guidance) {
+        const correct = surveyQuestions.filter((q, i) => surveyAnswers[i] === q.correctAnswer).length
+        const acc = surveyQuestions.length > 0 ? Math.round((correct / surveyQuestions.length) * 100) : 50
+        const weak = surveyQuestions
+          .filter((q, i) => surveyAnswers[i] !== q.correctAnswer)
+          .map(q => q.question.split(' ').slice(0, 5).join(' '))
+        guidance = {
+          learnerLevel: acc >= 80 ? 'Advanced' : acc >= 55 ? 'Intermediate' : 'Beginner',
+          priorityTopics: weak.slice(0, 4).length > 0 ? weak.slice(0, 4) : ['Core concepts', 'Key definitions', 'Practical applications'],
+          studyDuration: acc >= 80 ? '15 minutes' : acc >= 55 ? '30 minutes' : '45 minutes',
+          nextAction: acc >= 80 ? 'Review advanced topics before the quiz.' : 'Focus on the areas you found difficult in the survey.'
+        }
       }
 
-      // Get survey data
-      const surveyQuestions = currentQuiz.questions
-      const surveyAnswers = currentQuiz.userAnswers
-
-      // Generate adaptive quiz
       const adaptiveQuestions = await generateAdaptiveQuiz(
-        currentQuiz.documentText,
+        currentQuiz?.documentText || '',
         surveyQuestions,
         surveyAnswers,
-        currentQuiz.studyGuidance
+        guidance
       )
 
       if (!adaptiveQuestions || adaptiveQuestions.length === 0) {
-        throw new Error('No questions generated')
+        throw new Error('No questions generated — please try again')
       }
 
-      // Save adaptive quiz (replace survey with adaptive quiz)
       await saveCurrentQuiz({
-        documentName: currentQuiz.documentName,
-        documentText: currentQuiz.documentText,
+        documentName: currentQuiz?.documentName || 'Document',
+        documentText: currentQuiz?.documentText || '',
         questions: adaptiveQuestions,
-        isPrerequisiteSurvey: false, // This is the actual quiz
-        studyGuidance: currentQuiz.studyGuidance, // Keep guidance for reference
-        userAnswers: {}, // Reset answers
-        completedAt: null // Not completed yet
+        isPrerequisiteSurvey: false,
+        studyGuidance: guidance,
+        userAnswers: {},
+        completedAt: null
       })
 
-      setSuccess('Adaptive quiz generated! Starting quiz...')
-
-      // Navigate to quiz page
-      setTimeout(() => {
-        navigate('/quiz')
-      }, 1000)
+      setSuccess('Adaptive quiz ready! Starting now...')
+      setTimeout(() => navigate('/quiz'), 800)
     } catch (error) {
-      console.error('Error generating adaptive quiz:', error)
+      console.error('Adaptive quiz error:', error)
       setError('Failed to generate adaptive quiz. Please try again.')
     } finally {
       setIsProcessing(false)
@@ -308,6 +327,35 @@ function Dashboard() {
 
   const handleCancelNewDocument = () => {
     setShowNewDocModal(false)
+  }
+
+  const handleRestore = async (sessionId) => {
+    try {
+      setIsProcessing(true)
+      setProcessingStage('Restoring previous session...')
+      await restoreSession(sessionId)
+      
+      // Reload page data
+      const updatedQuiz = await getCurrentQuiz()
+      setCurrentQuiz(updatedQuiz)
+      
+      // Navigate or update state
+      if (updatedQuiz.questions && updatedQuiz.questions.length > 0) {
+        if (updatedQuiz.userAnswers && Object.keys(updatedQuiz.userAnswers).length > 0) {
+            setDashboardState(DASHBOARD_STATES.QUIZ_COMPLETED)
+        } else {
+            setDashboardState(DASHBOARD_STATES.SURVEY_READY)
+        }
+      }
+      
+      setSuccess('Session restored successfully!')
+    } catch (error) {
+      console.error('Restore error:', error)
+      setError('Failed to restore session')
+    } finally {
+      setIsProcessing(false)
+      setProcessingStage('')
+    }
   }
 
   // Helper functions for state checks
@@ -411,27 +459,153 @@ function Dashboard() {
             </div>
 
             {(isState(DASHBOARD_STATES.NO_DOCUMENT) || isState(DASHBOARD_STATES.DOCUMENT_UPLOADED)) && (
-              <div className="db-upload-zone">
-                <label htmlFor="file-upload" className="db-upload-label">
-                  <div className="db-upload-inner">
-                    {isProcessing ? <Loader2 className="processing-spinner" size={28} />
-                     : selectedFile ? <FileText size={28} style={{ color: 'var(--color-accent)' }} />
-                     : <Upload size={28} />}
-                    <div>
-                      <p className="db-upload-text">
-                        {isProcessing ? 'Processing...' : selectedFile ? selectedFile.name : 'Click to choose file'}
-                      </p>
-                      <p className="db-upload-hint">
-                        {selectedFile ? `${(selectedFile.size / 1024).toFixed(1)} KB` : 'PDF or TXT · Max 10 MB'}
-                      </p>
+              <div style={{ marginTop: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+
+                {/* Segmented tab control */}
+                <div style={{
+                  display: 'flex',
+                  background: 'var(--color-bg-secondary)',
+                  border: '1px solid var(--color-border)',
+                  borderRadius: '10px',
+                  padding: '3px',
+                  gap: '3px'
+                }}>
+                  {[
+                    { key: 'upload', icon: <Upload size={13} />, label: 'Upload File' },
+                    { key: 'paste', icon: <FileText size={13} />, label: 'Paste Text' }
+                  ].map(tab => (
+                    <button
+                      key={tab.key}
+                      onClick={() => setInputMode(tab.key)}
+                      style={{
+                        flex: 1,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: '0.4rem',
+                        padding: '0.5rem 1rem',
+                        border: 'none',
+                        borderRadius: '7px',
+                        background: inputMode === tab.key ? 'var(--color-bg-elevated)' : 'transparent',
+                        color: inputMode === tab.key ? 'var(--color-text-primary)' : 'var(--color-text-muted)',
+                        fontWeight: inputMode === tab.key ? '600' : '400',
+                        fontSize: '0.8125rem',
+                        cursor: 'pointer',
+                        fontFamily: 'inherit',
+                        boxShadow: inputMode === tab.key ? '0 1px 3px rgba(0,0,0,0.12), 0 0 0 1px var(--color-border)' : 'none',
+                        transition: 'all 0.15s ease',
+                        letterSpacing: '0.01em'
+                      }}
+                    >
+                      {tab.icon}{tab.label}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Upload zone */}
+                {inputMode === 'upload' ? (
+                  <label htmlFor="file-upload" style={{ cursor: isProcessing ? 'not-allowed' : 'pointer', display: 'block' }}>
+                    <div style={{
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '0.6rem',
+                      padding: '2.25rem 1.5rem',
+                      border: `2px dashed ${selectedFile ? 'var(--color-accent)' : 'var(--color-border)'}`,
+                      borderRadius: '14px',
+                      background: selectedFile ? 'rgba(99,102,241,0.04)' : 'var(--color-bg-secondary)',
+                      textAlign: 'center',
+                      transition: 'all 0.2s ease',
+                    }}
+                      onMouseEnter={e => { if (!selectedFile) { e.currentTarget.style.borderColor = 'var(--color-accent)'; e.currentTarget.style.background = 'rgba(99,102,241,0.04)'; }}}
+                      onMouseLeave={e => { if (!selectedFile) { e.currentTarget.style.borderColor = 'var(--color-border)'; e.currentTarget.style.background = 'var(--color-bg-secondary)'; }}}
+                    >
+                      <div style={{ color: selectedFile ? 'var(--color-accent)' : 'var(--color-text-muted)', lineHeight: 0 }}>
+                        {isProcessing ? <Loader2 size={28} className="processing-spinner" />
+                          : selectedFile && isImageFile(selectedFile) ? <Camera size={28} />
+                          : selectedFile ? <FileText size={28} />
+                          : <Upload size={28} />}
+                      </div>
+                      <div>
+                        <p style={{ margin: 0, fontSize: '0.9rem', fontWeight: 600, color: 'var(--color-text-primary)', lineHeight: 1.4 }}>
+                          {isProcessing ? 'Processing...' : selectedFile ? selectedFile.name : 'Click to upload a file'}
+                        </p>
+                        <p style={{ margin: '0.25rem 0 0', fontSize: '0.72rem', color: 'var(--color-text-muted)', lineHeight: 1.5 }}>
+                          {selectedFile
+                            ? `${(selectedFile.size / 1024).toFixed(1)} KB${isImageFile(selectedFile) ? ' · OCR enabled ✨' : ''}`
+                            : 'PDF · TXT · JPG/PNG · DOCX — Max 25 MB'}
+                        </p>
+                      </div>
+                    </div>
+                    <input id="file-upload" type="file" accept=".pdf,.txt,.jpg,.jpeg,.png,.webp,.docx"
+                      onChange={handleFileSelect} disabled={isProcessing} style={{ display: 'none' }} />
+                  </label>
+                ) : (
+                  <div>
+                    <textarea
+                      placeholder="Paste your notes, article, or study material here (min 100 characters)…"
+                      value={pastedText}
+                      onChange={(e) => setPastedText(e.target.value)}
+                      disabled={isProcessing}
+                      style={{
+                        width: '100%',
+                        minHeight: '160px',
+                        maxHeight: '380px',
+                        background: 'var(--color-bg-secondary)',
+                        border: '1.5px solid var(--color-border)',
+                        borderRadius: '12px',
+                        padding: '1rem 1.125rem',
+                        color: 'var(--color-text-primary)',
+                        fontFamily: 'inherit',
+                        fontSize: '0.875rem',
+                        lineHeight: '1.7',
+                        resize: 'vertical',
+                        boxSizing: 'border-box',
+                        outline: 'none',
+                        transition: 'border-color 0.2s ease',
+                      }}
+                      onFocus={e => { e.target.style.borderColor = 'var(--color-accent)'; e.target.style.boxShadow = '0 0 0 3px rgba(99,102,241,0.12)'; }}
+                      onBlur={e => { e.target.style.borderColor = 'var(--color-border)'; e.target.style.boxShadow = 'none'; }}
+                    />
+                    <div style={{ display: 'flex', justifyContent: 'flex-end', fontSize: '0.7rem', color: 'var(--color-text-muted)', marginTop: '0.35rem' }}>
+                      {pastedText.length} / 100 min chars
                     </div>
                   </div>
-                  <input id="file-upload" type="file" accept=".pdf,.txt"
-                    onChange={handleFileSelect} disabled={isProcessing} style={{ display: 'none' }} />
-                </label>
-                <button className="btn btn-primary btn-icon db-upload-btn"
-                  onClick={handleUpload} disabled={!selectedFile || isProcessing}>
-                  <Sparkles size={18} />{isProcessing ? 'Generating Survey...' : 'Generate Survey'}
+                )}
+
+                {/* Generate button */}
+                <button
+                  onClick={handleUpload}
+                  disabled={(inputMode === 'upload' && !selectedFile) || (inputMode === 'paste' && pastedText.length < 100) || isProcessing}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '0.5rem',
+                    width: '100%',
+                    padding: '0.9rem 1.5rem',
+                    border: 'none',
+                    borderRadius: '12px',
+                    fontFamily: 'inherit',
+                    fontSize: '0.9375rem',
+                    fontWeight: 600,
+                    letterSpacing: '0.01em',
+                    cursor: ((inputMode === 'upload' && !selectedFile) || (inputMode === 'paste' && pastedText.length < 100) || isProcessing) ? 'not-allowed' : 'pointer',
+                    background: ((inputMode === 'upload' && !selectedFile) || (inputMode === 'paste' && pastedText.length < 100) || isProcessing)
+                      ? 'var(--color-bg-elevated)'
+                      : 'linear-gradient(135deg, #6366f1 0%, #9333ea 100%)',
+                    color: ((inputMode === 'upload' && !selectedFile) || (inputMode === 'paste' && pastedText.length < 100) || isProcessing)
+                      ? 'var(--color-text-muted)'
+                      : '#fff',
+                    boxShadow: ((inputMode === 'upload' && !selectedFile) || (inputMode === 'paste' && pastedText.length < 100) || isProcessing)
+                      ? 'none'
+                      : '0 4px 14px rgba(99,102,241,0.35)',
+                    transition: 'all 0.2s ease',
+                  }}
+                >
+                  <Sparkles size={16} />
+                  {isProcessing ? processingStage || 'Processing…' : 'Generate Study Features'}
                 </button>
               </div>
             )}
@@ -571,6 +745,132 @@ function Dashboard() {
                 <div className="db-perf-sub">{isState(DASHBOARD_STATES.QUIZ_COMPLETED) ? 'SWOT analysis and breakdown ready' : 'Complete a quiz to generate your report'}</div>
               </div>
               <TrendingUp size={18} style={{ marginLeft: 'auto', color: 'var(--color-accent)' }}/>
+            </div>
+          )}
+
+          {/* Recent Sessions Quick Access */}
+          {recentSessions.length > 0 && isState(DASHBOARD_STATES.NO_DOCUMENT) && (
+            <div style={{
+              background: 'var(--color-bg-card)',
+              border: '1px solid var(--color-border)',
+              borderRadius: '20px',
+              padding: '1.25rem',
+              backdropFilter: 'blur(12px)',
+              boxShadow: 'var(--shadow-md)',
+            }}>
+              {/* Header */}
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <History size={16} style={{ color: 'var(--color-accent)' }} />
+                  <h3 style={{ margin: 0, fontSize: '0.9rem', fontWeight: 700, color: 'var(--color-text-primary)', letterSpacing: '-0.01em' }}>
+                    Recent Sessions
+                  </h3>
+                </div>
+                <Link to="/sessions" style={{
+                  fontSize: '0.75rem',
+                  color: 'var(--color-accent)',
+                  textDecoration: 'none',
+                  fontWeight: 500,
+                  opacity: 0.8
+                }}>
+                  View all →
+                </Link>
+              </div>
+
+              {/* Session cards */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                {recentSessions.map(session => {
+                  const rawDate = session.archivedAt
+                    ? (session.archivedAt.toDate ? session.archivedAt.toDate() : new Date(session.archivedAt))
+                    : null;
+                  const dateStr = rawDate
+                    ? rawDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+                    : 'Recently';
+                  const isComplete = !session.isPrerequisiteSurvey && session.completedAt;
+                  const docName = session.documentName || 'Untitled';
+                  const shortName = docName.length > 28 ? docName.substring(0, 28) + '…' : docName;
+
+                  return (
+                    <div
+                      key={session.id}
+                      onClick={() => handleRestore(session.id)}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.875rem',
+                        padding: '0.75rem 0.875rem',
+                        background: 'var(--color-bg-elevated)',
+                        border: '1px solid var(--color-border)',
+                        borderRadius: '12px',
+                        cursor: 'pointer',
+                        transition: 'all 0.2s ease',
+                      }}
+                      onMouseEnter={e => {
+                        e.currentTarget.style.borderColor = 'var(--color-accent)';
+                        e.currentTarget.style.background = 'rgba(99,102,241,0.05)';
+                        e.currentTarget.style.transform = 'translateX(3px)';
+                      }}
+                      onMouseLeave={e => {
+                        e.currentTarget.style.borderColor = 'var(--color-border)';
+                        e.currentTarget.style.background = 'var(--color-bg-elevated)';
+                        e.currentTarget.style.transform = 'translateX(0)';
+                      }}
+                    >
+                      {/* File icon */}
+                      <div style={{
+                        width: 36, height: 36, flexShrink: 0,
+                        borderRadius: '9px',
+                        background: 'rgba(99,102,241,0.1)',
+                        color: 'var(--color-accent)',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center'
+                      }}>
+                        <FileText size={16} />
+                      </div>
+
+                      {/* Info */}
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{
+                          fontSize: '0.8375rem',
+                          fontWeight: 600,
+                          color: 'var(--color-text-primary)',
+                          whiteSpace: 'nowrap',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          marginBottom: '0.2rem'
+                        }}>
+                          {shortName}
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                          <span style={{ fontSize: '0.7rem', color: 'var(--color-text-muted)' }}>
+                            {dateStr}
+                          </span>
+                          <span style={{
+                            fontSize: '0.65rem',
+                            fontWeight: 600,
+                            textTransform: 'uppercase',
+                            letterSpacing: '0.04em',
+                            padding: '2px 7px',
+                            borderRadius: '5px',
+                            background: isComplete ? 'rgba(16,185,129,0.12)' : 'rgba(245,158,11,0.12)',
+                            color: isComplete ? '#10b981' : '#f59e0b',
+                            border: `1px solid ${isComplete ? 'rgba(16,185,129,0.25)' : 'rgba(245,158,11,0.25)'}`,
+                          }}>
+                            {isComplete ? 'Done' : 'Resume'}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Chevron */}
+                      <ChevronLeft size={14} style={{
+                        transform: 'rotate(180deg)',
+                        color: 'var(--color-text-muted)',
+                        opacity: 0.5,
+                        flexShrink: 0
+                      }} />
+                    </div>
+                  );
+                })}
+              </div>
             </div>
           )}
         </div>

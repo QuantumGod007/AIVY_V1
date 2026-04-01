@@ -1,14 +1,41 @@
 import { useState, useEffect } from 'react'
 import Sidebar from '../components/Sidebar'
+import { onAuthStateChanged } from 'firebase/auth'
+import { auth } from '../firebase'
 import { getCurrentQuiz } from '../services/storageService'
 import { generateFlashcards } from '../services/geminiService'
-import { Loader2, ChevronLeft, ChevronRight, RotateCcw, Check, X, Sparkles } from 'lucide-react'
+import { saveFlashcards, getFlashcards } from '../services/firestoreService'
+import {
+    Loader2, ChevronLeft, ChevronRight, RotateCcw,
+    Check, X, Sparkles, Cloud, CloudOff
+} from 'lucide-react'
+
+// Sync status pill
+function SyncPill({ status }) {
+    return (
+        <div style={{
+            display: 'flex', alignItems: 'center', gap: '0.35rem',
+            fontSize: '0.72rem', fontWeight: 600, padding: '0.25rem 0.65rem',
+            borderRadius: '100px', border: '1px solid var(--color-border)',
+            background: 'var(--color-bg-elevated)',
+            color: status === 'saved' ? 'var(--color-success, #22c55e)'
+                 : status === 'saving' ? 'var(--color-text-muted)'
+                 : 'var(--color-warning, #f59e0b)',
+            transition: 'color 0.3s'
+        }}>
+            {status === 'saved'  && <><Check size={11} /> Cloud Saved</>}
+            {status === 'saving' && <><Cloud size={11} /> Saving…</>}
+            {status === 'local'  && <><CloudOff size={11} /> Local Only</>}
+        </div>
+    )
+}
 
 function Flashcards() {
     const [cards, setCards] = useState([])
     const [current, setCurrent] = useState(0)
     const [flipped, setFlipped] = useState(false)
     const [loading, setLoading] = useState(false)
+    const [initializing, setInitializing] = useState(true)
     const [error, setError] = useState('')
     const [topic, setTopic] = useState('')
     const [known, setKnown] = useState([])
@@ -16,21 +43,32 @@ function Flashcards() {
     const [mode, setMode] = useState('all') // 'all' | 'review'
     const [documentLoaded, setDocumentLoaded] = useState(false)
     const [phase, setPhase] = useState('setup') // 'setup' | 'study'
+    const [syncStatus, setSyncStatus] = useState('local')
 
     useEffect(() => {
-        const loadDoc = async () => {
-            const quiz = await getCurrentQuiz()
-            if (quiz?.documentText) {
-                setDocumentLoaded(true)
-                setTopic(quiz.documentName?.replace(/\.[^.]+$/, '') || '')
+        const unsubscribe = onAuthStateChanged(auth, async (user) => {
+            if (!user) { setInitializing(false); return }
+            setInitializing(true)
+            try {
+                const quiz = await getCurrentQuiz()
+                if (quiz?.documentText) {
+                    setDocumentLoaded(true)
+                    setTopic(prev => prev || quiz.documentName?.replace(/\.[^.]+$/, '') || '')
+                }
+                const cloud = await getFlashcards()
+                if (cloud?.cards?.length) {
+                    setCards(cloud.cards)
+                    if (cloud.topic) setTopic(cloud.topic)
+                    setPhase('study')
+                    setSyncStatus('saved')
+                }
+            } catch (err) {
+                console.warn('Flashcards init:', err.message)
+            } finally {
+                setInitializing(false)
             }
-        }
-        const saved = localStorage.getItem('flashcards')
-        if (saved) {
-            setCards(JSON.parse(saved))
-            setPhase('study')
-        }
-        loadDoc()
+        })
+        return () => unsubscribe()
     }, [])
 
     const activeCards = mode === 'review'
@@ -47,14 +85,18 @@ function Flashcards() {
             const docText = quiz?.documentText || ''
             const result = await generateFlashcards(docText, topic)
             setCards(result)
-            localStorage.setItem('flashcards', JSON.stringify(result))
             setCurrent(0)
             setFlipped(false)
             setKnown([])
             setReview([])
             setPhase('study')
+            // Save to cloud
+            setSyncStatus('saving')
+            const ok = await saveFlashcards(result, topic)
+            setSyncStatus(ok ? 'saved' : 'local')
         } catch {
             setError('Failed to generate flashcards. Please try again.')
+            setSyncStatus('local')
         } finally {
             setLoading(false)
         }
@@ -101,18 +143,19 @@ function Flashcards() {
                         <h1 className="page-title">Flashcards</h1>
                         <p className="page-subtitle">AI-generated cards from your study material</p>
                     </div>
-                    {phase === 'study' && (
-                        <div className="flashcard-header-actions">
-                            <button className="btn btn-secondary btn-icon" onClick={reset}>
-                                <RotateCcw size={16} />
-                                Reset
-                            </button>
-                            <button className="btn btn-secondary btn-icon" onClick={() => setPhase('setup')}>
-                                <Sparkles size={16} />
-                                New Set
-                            </button>
-                        </div>
-                    )}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                        {phase === 'study' && <SyncPill status={syncStatus} />}
+                        {phase === 'study' && (
+                            <>
+                                <button className="btn btn-secondary btn-icon" onClick={reset}>
+                                    <RotateCcw size={16} /> Reset
+                                </button>
+                                <button className="btn btn-secondary btn-icon" onClick={() => setPhase('setup')}>
+                                    <Sparkles size={16} /> New Set
+                                </button>
+                            </>
+                        )}
+                    </div>
                 </div>
 
                 {phase === 'setup' && (
@@ -138,21 +181,31 @@ function Flashcards() {
                             <button
                                 className="btn btn-primary btn-large btn-icon mt-lg"
                                 onClick={generate}
-                                disabled={loading}
+                                disabled={loading || initializing}
                             >
                                 {loading
                                     ? <><Loader2 size={18} className="processing-spinner" /> Generating...</>
-                                    : <><Sparkles size={18} /> Generate Flashcards</>
-                                }
+                                    : <><Sparkles size={18} /> Generate Flashcards</>}
                             </button>
 
-                            {cards.length > 0 && (
+                            {/* If cloud cards loaded, offer to continue */}
+                            {cards.length > 0 && !loading && (
                                 <button
                                     className="btn btn-outline btn-icon mt-sm"
                                     onClick={() => setPhase('study')}
                                 >
-                                    Continue with existing cards ({cards.length})
+                                    {syncStatus === 'saved'
+                                        ? <><Cloud size={15} /> Continue saved set ({cards.length} cards)</>
+                                        : <>Continue with existing cards ({cards.length})</>
+                                    }
                                 </button>
+                            )}
+
+                            {initializing && (
+                                <p style={{ textAlign: 'center', fontSize: '0.8rem', color: 'var(--color-text-muted)', marginTop: '1rem' }}>
+                                    <Cloud size={14} style={{ verticalAlign: 'middle', marginRight: '0.35rem' }} />
+                                    Loading saved cards…
+                                </p>
                             )}
                         </div>
                     </div>
@@ -231,18 +284,15 @@ function Flashcards() {
                                         onClick={prev}
                                         disabled={current === 0}
                                     >
-                                        <ChevronLeft size={18} />
-                                        Previous
+                                        <ChevronLeft size={18} /> Previous
                                     </button>
 
                                     <div className="flashcard-mark-btns">
                                         <button className="flashcard-mark-btn mark-review" onClick={markReview}>
-                                            <X size={16} />
-                                            Review
+                                            <X size={16} /> Review
                                         </button>
                                         <button className="flashcard-mark-btn mark-known" onClick={markKnown}>
-                                            <Check size={16} />
-                                            Known
+                                            <Check size={16} /> Known
                                         </button>
                                     </div>
 
@@ -251,18 +301,16 @@ function Flashcards() {
                                         onClick={next}
                                         disabled={current === activeCards.length - 1}
                                     >
-                                        Next
-                                        <ChevronRight size={18} />
+                                        Next <ChevronRight size={18} />
                                     </button>
                                 </div>
                             </>
                         ) : (
                             <div className="flashcard-complete">
                                 <h2>Session Complete</h2>
-                                <p>You've gone through all {mode === 'review' ? 'review' : ''} cards.</p>
+                                <p>You've gone through all {mode === 'review' ? 'review ' : ''}cards.</p>
                                 <button className="btn btn-primary btn-icon mt-lg" onClick={reset}>
-                                    <RotateCcw size={16} />
-                                    Start Over
+                                    <RotateCcw size={16} /> Start Over
                                 </button>
                             </div>
                         )}

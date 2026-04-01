@@ -469,13 +469,22 @@ function Landing() {
 
       <section className="landing-hero-banner animate-on-scroll">
         <div className="landing-hero-banner-text">
-          <h3 className="landing-hero-banner-title">PHOTO-REALISTIC</h3>
+          <h3 className="landing-hero-banner-title">Learn Smarter with AIVY</h3>
           <p className="landing-hero-banner-subtitle">
-            Create realistic images of landscapes, plants, people and animals with true-to-life details.
+            Transform your study material into interactive quizzes, flashcards, and
+            personalised learning experiences powered by AI.
+          </p>
+          <p className="landing-hero-banner-subtitle" style={{ marginTop: '0.75rem', opacity: 0.75 }}>
+            AIVY analyses your performance, adapts difficulty in real-time, and guides
+            you with intelligent learning paths built around <em>you</em>.
           </p>
         </div>
         <div className="landing-hero-banner-image-container">
-          <img src="/images/image.png" alt="image.png" className="landing-hero-banner-image" />
+          <img
+            src="/images/aivy_study_workspace.png"
+            alt="Student using AIVY AI learning dashboard"
+            className="landing-hero-banner-image"
+          />
         </div>
       </section>
 

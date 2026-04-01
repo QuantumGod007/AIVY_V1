@@ -28,6 +28,23 @@ function getUserId() {
 }
 
 /**
+ * Firestore has a 1MB document limit.
+ * Large PDFs can easily exceed this — truncate documentText to be safe.
+ */
+function safeTruncate(obj) {
+    if (!obj) return obj
+    const MAX_CHARS = 100000 // ~100KB of text
+    if (obj.documentText && obj.documentText.length > MAX_CHARS) {
+        return {
+            ...obj,
+            documentText: obj.documentText.substring(0, MAX_CHARS),
+            documentTextTruncated: true
+        }
+    }
+    return obj
+}
+
+/**
  * Save a document
  */
 export async function saveDocument(document) {
@@ -123,7 +140,7 @@ export async function saveCurrentQuiz(quiz) {
         const quizRef = doc(db, 'users', userId, 'quizzes', 'current')
 
         await setDoc(quizRef, {
-            ...quiz,
+            ...safeTruncate(quiz),
             updatedAt: serverTimestamp()
         })
     } catch (error) {
@@ -197,8 +214,7 @@ export async function getQuizResults() {
     try {
         const userId = getUserId()
         const resultsRef = collection(db, 'users', userId, 'results')
-        const q = query(resultsRef, orderBy('createdAt', 'desc'))
-        const querySnapshot = await getDocs(q)
+        const querySnapshot = await getDocs(resultsRef)
 
         const results = []
         querySnapshot.forEach((doc) => {
@@ -235,7 +251,7 @@ export async function archiveCurrentSession() {
 
         // Create session archive
         const sessionRef = doc(db, 'users', userId, 'sessions', sessionId)
-        const sessionData = {
+        const sessionData = safeTruncate({
             id: sessionId,
             documentName: currentQuiz.documentName,
             documentText: currentQuiz.documentText,
@@ -244,7 +260,7 @@ export async function archiveCurrentSession() {
             userAnswers: currentQuiz.userAnswers || {},
             completedAt: currentQuiz.completedAt || null,
             archivedAt: serverTimestamp()
-        }
+        })
 
         await setDoc(sessionRef, sessionData)
 

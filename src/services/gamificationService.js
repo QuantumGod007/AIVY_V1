@@ -1,19 +1,31 @@
-import { doc, getDoc, setDoc, updateDoc, increment, collection, query, orderBy, limit, getDocs } from 'firebase/firestore';
-import { db, auth } from '../firebase';
+/**
+ * gamificationService.js
+ * XP, badges, and leaderboard logic powered by Firebase Firestore.
+ *
+ * Architecture:
+ *  - users/{uid}/gamification/stats  → per-user XP, badges, streak
+ *  - leaderboard/{uid}               → denormalized flat doc for fast sorted reads
+ *    (written every time XP is awarded — avoids N+1 sub-collection scans)
+ */
 
-// ============================================
-// XP CONSTANTS
-// ============================================
+import {
+    doc, getDoc, setDoc, updateDoc, increment,
+    collection, query, orderBy, limit,
+    getDocs, onSnapshot, serverTimestamp
+} from 'firebase/firestore'
+import { db, auth } from '../firebase'
+
+// ─── XP Constants ─────────────────────────────────────────────────────────────
+
 const XP_REWARDS = {
-    SURVEY_COMPLETE: 10,      // Complete prerequisite survey
-    QUIZ_COMPLETE: 50,        // Complete adaptive quiz
-    PERFECT_SCORE: 20,        // Get 100% on quiz (bonus)
-    FIRST_INTERACTION: 5      // First time using the app
-};
+    SURVEY_COMPLETE: 10,
+    QUIZ_COMPLETE: 50,
+    PERFECT_SCORE: 20,
+    FIRST_INTERACTION: 5
+}
 
-// ============================================
-// BADGE DEFINITIONS (Static)
-// ============================================
+// ─── Badge Definitions ────────────────────────────────────────────────────────
+
 export const BADGES = {
     FIRST_STEPS: {
         id: 'first_steps',
@@ -50,31 +62,56 @@ export const BADGES = {
         icon: '🔥',
         requirement: '7_day_streak'
     }
-};
-
-// ============================================
-// HELPER: Get User ID
-// ============================================
-function getUserId() {
-    const user = auth.currentUser;
-    if (!user) {
-        // Fallback to localStorage if/when we implement that
-        const localUser = JSON.parse(localStorage.getItem('user'));
-        if (localUser && localUser.uid) return localUser.uid;
-        throw new Error('User not authenticated');
-    }
-    return user.uid;
 }
 
-// ============================================
-// INITIALIZE USER STATS (Call on first login)
-// ============================================
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function getUserId() {
+    const user = auth.currentUser
+    if (!user) {
+        const local = JSON.parse(localStorage.getItem('user') || 'null')
+        if (local?.uid) return local.uid
+        throw new Error('User not authenticated')
+    }
+    return user.uid
+}
+
+function getDisplayName() {
+    const user = auth.currentUser
+    if (!user) return 'Student'
+    return user.displayName || user.email?.split('@')[0] || 'Student'
+}
+
+// ─── Leaderboard Sync (denormalized) ─────────────────────────────────────────
+
+/**
+ * Write/update the flat leaderboard/{uid} doc with latest XP and badges.
+ * Called after every XP award — keeps leaderboard queryable in one snapshot.
+ */
+async function syncLeaderboardEntry(userId, totalXP, badges) {
+    try {
+        const user = auth.currentUser
+        const ref = doc(db, 'leaderboard', userId)
+        await setDoc(ref, {
+            userId,
+            name: user?.displayName || user?.email?.split('@')[0] || 'Student',
+            email: user?.email || '',
+            totalXP,
+            badges: badges || [],
+            updatedAt: serverTimestamp()
+        }, { merge: true })
+    } catch (err) {
+        console.warn('syncLeaderboardEntry error:', err.message)
+    }
+}
+
+// ─── Initialize User Stats ────────────────────────────────────────────────────
+
 export async function initializeUserStats(userId) {
     try {
-        const statsRef = doc(db, 'users', userId, 'gamification', 'stats');
-        const statsDoc = await getDoc(statsRef);
-
-        if (!statsDoc.exists()) {
+        const statsRef = doc(db, 'users', userId, 'gamification', 'stats')
+        const snap = await getDoc(statsRef)
+        if (!snap.exists()) {
             await setDoc(statsRef, {
                 totalXP: 0,
                 level: 1,
@@ -82,239 +119,184 @@ export async function initializeUserStats(userId) {
                 lastLoginDate: new Date().toISOString().split('T')[0],
                 loginStreak: 1,
                 createdAt: new Date().toISOString()
-            });
-            console.log('User stats initialized');
+            })
+            // Seed the leaderboard entry so new users appear immediately
+            await syncLeaderboardEntry(userId, 0, [])
         } else {
-            // Update streak if returning user
-            await updateLoginStreak(userId);
+            await updateLoginStreak(userId)
         }
     } catch (error) {
-        console.error('Error initializing stats:', error);
+        console.error('Error initializing stats:', error)
     }
 }
 
-// ============================================
-// UPDATE LOGIN STREAK (for streak badges)
-// ============================================
+// ─── Login Streak ─────────────────────────────────────────────────────────────
+
 async function updateLoginStreak(userId) {
     try {
-        const statsRef = doc(db, 'users', userId, 'gamification', 'stats');
-        const statsDoc = await getDoc(statsRef);
-
-        if (statsDoc.exists()) {
-            const stats = statsDoc.data();
-            const today = new Date().toISOString().split('T')[0];
-            const lastLogin = stats.lastLoginDate;
-
-            // Calculate day difference
-            const lastDate = new Date(lastLogin);
-            const currentDate = new Date(today);
-            const diffTime = currentDate - lastDate;
-            const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
-
-            if (diffDays === 1) {
-                // Consecutive day - increment streak
-                await updateDoc(statsRef, {
-                    loginStreak: increment(1),
-                    lastLoginDate: today
-                });
-            } else if (diffDays > 1) {
-                // Streak broken - reset to 1
-                await updateDoc(statsRef, {
-                    loginStreak: 1,
-                    lastLoginDate: today
-                });
-            }
-            // If diffDays === 0, same day - do nothing
+        const statsRef = doc(db, 'users', userId, 'gamification', 'stats')
+        const snap = await getDoc(statsRef)
+        if (!snap.exists()) return
+        const stats = snap.data()
+        const today = new Date().toISOString().split('T')[0]
+        const lastLogin = stats.lastLoginDate
+        const diffDays = Math.floor(
+            (new Date(today) - new Date(lastLogin)) / (1000 * 60 * 60 * 24)
+        )
+        if (diffDays === 1) {
+            await updateDoc(statsRef, { loginStreak: increment(1), lastLoginDate: today })
+        } else if (diffDays > 1) {
+            await updateDoc(statsRef, { loginStreak: 1, lastLoginDate: today })
         }
-    } catch (error) {
-        console.error('Error updating streak:', error);
+    } catch (err) {
+        console.error('updateLoginStreak:', err)
     }
 }
 
-// ============================================
-// ADD XP (Main function)
-// ============================================
+// ─── Add XP ───────────────────────────────────────────────────────────────────
+
 export async function addXP(xpAmount, reason = 'activity') {
     try {
-        const userId = getUserId();
-        const statsRef = doc(db, 'users', userId, 'gamification', 'stats');
+        const userId = getUserId()
+        const statsRef = doc(db, 'users', userId, 'gamification', 'stats')
 
-        // Update XP
-        await updateDoc(statsRef, {
-            totalXP: increment(xpAmount)
-        });
+        await updateDoc(statsRef, { totalXP: increment(xpAmount) })
+        console.log(`Added ${xpAmount} XP for: ${reason}`)
 
-        console.log(`Added ${xpAmount} XP for: ${reason}`);
-
-        // Check for badge eligibility after XP update
-        const statsDoc = await getDoc(statsRef);
-        if (statsDoc.exists()) {
-            const currentXP = statsDoc.data().totalXP;
-            await checkAndAwardBadges(userId, currentXP);
+        // Re-read to get fresh totals for badge check + leaderboard sync
+        const updated = await getDoc(statsRef)
+        if (updated.exists()) {
+            const { totalXP, badges } = updated.data()
+            await checkAndAwardBadges(userId, totalXP)
+            // Sync denormalized leaderboard entry
+            const latest = await getDoc(statsRef)
+            const latestBadges = latest.data()?.badges || []
+            await syncLeaderboardEntry(userId, totalXP, latestBadges)
         }
 
-        // Notify UI components
-        window.dispatchEvent(new Event('gamification_update'));
-
-        return true;
-    } catch (error) {
-        console.error('Error adding XP:', error);
-        return false;
+        window.dispatchEvent(new Event('gamification_update'))
+        return true
+    } catch (err) {
+        console.error('addXP error:', err)
+        return false
     }
 }
 
-// ============================================
-// AWARD XP FOR SPECIFIC ACTIONS
-// ============================================
+// ─── Action-Specific XP ───────────────────────────────────────────────────────
+
 export async function awardSurveyXP() {
-    await addXP(XP_REWARDS.SURVEY_COMPLETE, 'Survey completed');
-    const userId = getUserId();
-    await awardBadge(userId, 'first_steps');
+    await addXP(XP_REWARDS.SURVEY_COMPLETE, 'Survey completed')
+    const userId = getUserId()
+    await awardBadge(userId, 'first_steps')
 }
 
 export async function awardQuizXP(score, total) {
-    const baseXP = XP_REWARDS.QUIZ_COMPLETE;
-    let totalXP = baseXP;
-
-    // Bonus for perfect score
+    let totalXP = XP_REWARDS.QUIZ_COMPLETE
     if (score === total) {
-        totalXP += XP_REWARDS.PERFECT_SCORE;
-        const userId = getUserId();
-        await awardBadge(userId, 'perfect_student');
+        totalXP += XP_REWARDS.PERFECT_SCORE
+        const userId = getUserId()
+        await awardBadge(userId, 'perfect_student')
     }
-
-    await addXP(totalXP, 'Quiz completed');
-    const userId = getUserId();
-    await awardBadge(userId, 'quiz_master');
+    await addXP(totalXP, 'Quiz completed')
+    const userId = getUserId()
+    await awardBadge(userId, 'quiz_master')
 }
 
-// ============================================
-// AWARD BADGE (Check if not already earned)
-// ============================================
+// ─── Badge Award ──────────────────────────────────────────────────────────────
+
 export async function awardBadge(userId, badgeId) {
     try {
-        const statsRef = doc(db, 'users', userId, 'gamification', 'stats');
-        const statsDoc = await getDoc(statsRef);
-
-        if (statsDoc.exists()) {
-            const stats = statsDoc.data();
-            const currentBadges = stats.badges || [];
-
-            // Check if badge already awarded
-            if (!currentBadges.includes(badgeId)) {
-                currentBadges.push(badgeId);
-                await updateDoc(statsRef, {
-                    badges: currentBadges
-                });
-                console.log(`Badge awarded: ${badgeId}`);
-                return true;
-            }
-        }
-        return false;
-    } catch (error) {
-        console.error('Error awarding badge:', error);
-        return false;
+        const statsRef = doc(db, 'users', userId, 'gamification', 'stats')
+        const snap = await getDoc(statsRef)
+        if (!snap.exists()) return false
+        const stats = snap.data()
+        const current = stats.badges || []
+        if (current.includes(badgeId)) return false
+        const updated = [...current, badgeId]
+        await updateDoc(statsRef, { badges: updated })
+        // Keep leaderboard in sync with new badge
+        await syncLeaderboardEntry(userId, stats.totalXP || 0, updated)
+        console.log(`Badge awarded: ${badgeId}`)
+        return true
+    } catch (err) {
+        console.error('awardBadge error:', err)
+        return false
     }
 }
 
-// ============================================
-// CHECK AND AWARD BADGES BASED ON XP
-// ============================================
 async function checkAndAwardBadges(userId, currentXP) {
-    // Award Century Club badge at 100 XP
-    if (currentXP >= 100) {
-        await awardBadge(userId, 'century_club');
-    }
-
-    // Check for streak badges
-    const statsRef = doc(db, 'users', userId, 'gamification', 'stats');
-    const statsDoc = await getDoc(statsRef);
-
-    if (statsDoc.exists()) {
-        const stats = statsDoc.data();
-        if (stats.loginStreak >= 7) {
-            await awardBadge(userId, 'week_warrior');
-        }
+    if (currentXP >= 100) await awardBadge(userId, 'century_club')
+    const statsRef = doc(db, 'users', userId, 'gamification', 'stats')
+    const snap = await getDoc(statsRef)
+    if (snap.exists() && snap.data().loginStreak >= 7) {
+        await awardBadge(userId, 'week_warrior')
     }
 }
 
-// ============================================
-// GET USER STATS (for dashboard display)
-// ============================================
+// ─── Get User Stats ───────────────────────────────────────────────────────────
+
 export async function getUserStats() {
     try {
-        const userId = getUserId();
-        const statsRef = doc(db, 'users', userId, 'gamification', 'stats');
-        const statsDoc = await getDoc(statsRef);
-
-        if (statsDoc.exists()) {
-            return statsDoc.data();
-        }
-
-        // Initialize if doesn't exist
-        await initializeUserStats(userId);
-        return {
-            totalXP: 0,
-            level: 1,
-            badges: [],
-            loginStreak: 1
-        };
-    } catch (error) {
-        console.error('Error getting stats:', error);
-        return null;
+        const userId = getUserId()
+        const statsRef = doc(db, 'users', userId, 'gamification', 'stats')
+        const snap = await getDoc(statsRef)
+        if (snap.exists()) return snap.data()
+        await initializeUserStats(userId)
+        return { totalXP: 0, level: 1, badges: [], loginStreak: 1 }
+    } catch (err) {
+        console.error('getUserStats error:', err)
+        return null
     }
 }
 
-// ============================================
-// GET LEADERBOARD (Top 10 users by XP)
-// ============================================
+// ─── Leaderboard — Single Query (replaces N+1 pattern) ───────────────────────
+
+/**
+ * One-time fetch of top 20 from the flat `leaderboard` collection.
+ * Returns sorted array by totalXP desc.
+ */
 export async function getLeaderboard() {
     try {
-        // Query all users' gamification stats
-        const leaderboardData = [];
-
-        // Get all users
-        const usersRef = collection(db, 'users');
-        const usersSnapshot = await getDocs(usersRef);
-
-        // For each user, get their stats
-        for (const userDoc of usersSnapshot.docs) {
-            const statsRef = doc(db, 'users', userDoc.id, 'gamification', 'stats');
-            const statsDoc = await getDoc(statsRef);
-
-            if (statsDoc.exists()) {
-                const stats = statsDoc.data();
-                const userData = userDoc.data();
-
-                leaderboardData.push({
-                    userId: userDoc.id,
-                    name: userData.name || 'Anonymous',
-                    email: userData.email || '',
-                    totalXP: stats.totalXP || 0,
-                    level: stats.level || 1,
-                    badges: stats.badges || []
-                });
-            }
-        }
-
-        // Sort by XP (descending) and take top 10
-        leaderboardData.sort((a, b) => b.totalXP - a.totalXP);
-        return leaderboardData.slice(0, 10);
-
-    } catch (error) {
-        console.error('Error fetching leaderboard:', error);
-        return [];
+        const lb = collection(db, 'leaderboard')
+        const q = query(lb, orderBy('totalXP', 'desc'), limit(20))
+        const snap = await getDocs(q)
+        const results = []
+        snap.forEach(d => results.push({ ...d.data(), userId: d.id }))
+        return results
+    } catch (err) {
+        console.error('getLeaderboard error:', err)
+        return []
     }
 }
 
-// ============================================
-// GET USER BADGES (formatted for display)
-// ============================================
+/**
+ * Real-time leaderboard subscription using onSnapshot.
+ * @param {function} callback - called with sorted leaderboard array whenever data changes
+ * @returns {function} unsubscribe function — call this on component unmount
+ */
+export function subscribeToLeaderboard(callback) {
+    try {
+        const lb = collection(db, 'leaderboard')
+        const q = query(lb, orderBy('totalXP', 'desc'), limit(20))
+        const unsub = onSnapshot(q, (snap) => {
+            const results = []
+            snap.forEach(d => results.push({ ...d.data(), userId: d.id }))
+            callback(results)
+        }, (err) => {
+            console.error('leaderboard onSnapshot error:', err)
+            callback([])
+        })
+        return unsub
+    } catch (err) {
+        console.error('subscribeToLeaderboard error:', err)
+        return () => {}
+    }
+}
+
+// ─── Badge Display Helpers ────────────────────────────────────────────────────
+
 export function getBadgeDetails(badgeIds) {
-    return badgeIds.map(id => {
-        // Find badge definition
-        const badge = Object.values(BADGES).find(b => b.id === id);
-        return badge || null;
-    }).filter(Boolean); // Remove nulls
+    return badgeIds
+        .map(id => Object.values(BADGES).find(b => b.id === id) || null)
+        .filter(Boolean)
 }

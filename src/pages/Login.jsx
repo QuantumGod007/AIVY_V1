@@ -2,7 +2,21 @@ import { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { signInWithEmailAndPassword, GoogleAuthProvider, OAuthProvider, signInWithPopup } from "firebase/auth";
 import { auth } from "../firebase";
+import { ensureUserProfile } from "../services/firestoreService";
+import { initializeUserStats } from "../services/gamificationService";
 import './SignupNew.css';
+
+// Called after any successful sign-in to seed Firestore
+async function seedUserOnLogin(user) {
+  try {
+    await Promise.all([
+      ensureUserProfile(user.displayName || user.email?.split('@')[0]),
+      initializeUserStats(user.uid)
+    ])
+  } catch (e) {
+    console.warn('seedUserOnLogin:', e.message)
+  }
+}
 
 function Login() {
   const [email, setEmail] = useState("");
@@ -14,7 +28,8 @@ function Login() {
   const handleGoogleSignIn = async () => {
     try {
       const provider = new GoogleAuthProvider();
-      await signInWithPopup(auth, provider);
+      const result = await signInWithPopup(auth, provider);
+      await seedUserOnLogin(result.user);
       navigate("/dashboard");
     } catch (err) {
       if (err.code === 'auth/popup-closed-by-user') {
@@ -28,7 +43,8 @@ function Login() {
   const handleGithubSignIn = async () => {
     try {
       const provider = new OAuthProvider('github.com');
-      await signInWithPopup(auth, provider);
+      const result = await signInWithPopup(auth, provider);
+      await seedUserOnLogin(result.user);
       navigate("/dashboard");
     } catch (err) {
       if (err.code === 'auth/popup-closed-by-user') {
@@ -45,7 +61,8 @@ function Login() {
     setLoading(true);
 
     try {
-      await signInWithEmailAndPassword(auth, email, password);
+      const result = await signInWithEmailAndPassword(auth, email, password);
+      await seedUserOnLogin(result.user);
       navigate("/dashboard");
     } catch (err) {
       if (err.code === 'auth/user-not-found') {

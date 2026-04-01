@@ -15,3 +15,12 @@ ReactDOM.createRoot(document.getElementById("root")).render(
     </BrowserRouter>
   </React.StrictMode>
 );
+
+// Register Service Worker for PWA
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register(`${basename}sw.js`)
+      .then(reg => console.log('SW registered:', reg.scope))
+      .catch(err => console.log('SW registration failed:', err));
+  });
+}

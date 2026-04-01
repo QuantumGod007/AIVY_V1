@@ -22,6 +22,7 @@ const NAV_ITEMS = [
     { to: '/ai-tutor', icon: MessageSquare, label: 'AI Tutor' },
     { to: '/study-planner', icon: CalendarDays, label: 'Study Planner' },
     { to: '/flashcards', icon: CreditCard, label: 'Flashcards' },
+    { to: '/sessions', icon: Brain, label: 'Sessions' },
     { to: '/leaderboard', icon: Trophy, label: 'Leaderboard' },
     { to: '/progress', icon: TrendingUp, label: 'Progress' },
 ]
@@ -39,11 +40,13 @@ function Sidebar() {
     }, [theme])
 
     const handleLogout = async () => {
-        try {
-            await signOut(auth)
-            navigate('/login')
-        } catch (e) {
-            console.error(e)
+        if (window.confirm('Are you sure you want to logout?')) {
+            try {
+                await signOut(auth)
+                navigate('/login')
+            } catch (e) {
+                console.error(e)
+            }
         }
     }
 

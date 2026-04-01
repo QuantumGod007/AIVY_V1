@@ -15,6 +15,8 @@ import AiTutor from './pages/AiTutor'
 import StudyPlanner from './pages/StudyPlanner'
 import Flashcards from './pages/Flashcards'
 import Leaderboard from './pages/Leaderboard'
+import Profile from './pages/Profile'
+import Sessions from './pages/Sessions'
 
 function App() {
   const [user, setUser] = useState(null)
@@ -30,15 +32,32 @@ function App() {
   }, [])
 
   if (loading) return (
-    <div className="min-h-screen bg-gray-950 text-white flex items-center justify-center">
-      Loading...
+    <div style={{
+      minHeight: '100vh',
+      background: 'var(--color-bg-primary)',
+      color: 'var(--color-text-primary)',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      flexDirection: 'column',
+      gap: '1rem',
+      fontFamily: 'Inter, sans-serif'
+    }}>
+      <div style={{
+        width: 40, height: 40, borderRadius: '50%',
+        border: '3px solid rgba(99,102,241,0.2)',
+        borderTopColor: '#6366f1',
+        animation: 'spin 0.8s linear infinite'
+      }} />
+      <p style={{ color: 'var(--color-text-secondary)', fontSize: '0.9rem' }}>Loading AIVY...</p>
     </div>
   )
 
   const isAuthRoute = ['/login', '/signup'].includes(location.pathname)
   const isProtectedRoute = [
     '/dashboard', '/quiz', '/progress',
-    '/ai-tutor', '/study-planner', '/flashcards', '/leaderboard'
+    '/ai-tutor', '/study-planner', '/flashcards', '/leaderboard',
+    '/profile', '/sessions'
   ].includes(location.pathname)
 
   if (!user && isProtectedRoute) {
@@ -63,6 +82,8 @@ function App() {
       <Route path="/study-planner" element={<StudyPlanner />} />
       <Route path="/flashcards" element={<Flashcards />} />
       <Route path="/leaderboard" element={<Leaderboard />} />
+      <Route path="/profile" element={<Profile />} />
+      <Route path="/sessions" element={<Sessions />} />
       <Route path="*" element={<Navigate to="/" />} />
     </Routes>
   )

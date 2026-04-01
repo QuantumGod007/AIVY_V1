@@ -1,0 +1,48 @@
+{
+  "name": "AIVY — AI Study Companion",
+  "short_name": "AIVY",
+  "description": "AI-powered study companion. Upload documents, take adaptive quizzes, and learn smarter.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0a0a0f",
+  "theme_color": "#7c3aed",
+  "orientation": "any",
+  "scope": "/",
+  "lang": "en",
+  "categories": ["education", "productivity"],
+  "icons": [
+    {
+      "src": "icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "screenshots": [],
+  "shortcuts": [
+    {
+      "name": "Dashboard",
+      "short_name": "Dashboard",
+      "description": "Go to Dashboard",
+      "url": "/dashboard"
+    },
+    {
+      "name": "AI Tutor",
+      "short_name": "Tutor",
+      "description": "Ask your AI Tutor",
+      "url": "/ai-tutor"
+    },
+    {
+      "name": "Flashcards",
+      "short_name": "Cards",
+      "description": "Study your flashcards",
+      "url": "/flashcards"
+    }
+  ]
+}

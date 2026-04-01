@@ -13,8 +13,8 @@ const genAI = new GoogleGenerativeAI(API_KEY)
  */
 function getModel(config) {
     const model = genAI.getGenerativeModel(
-        { model: 'gemini-1.5-flash' },
-        { apiVersion: 'v1' }
+        { model: 'gemini-2.5-flash' },
+        { apiVersion: 'v1beta' }
     )
     if (config) model.generationConfig = config
     return model
@@ -62,26 +62,30 @@ Generate exactly 5 prerequisite questions.`
         const response = await result.response
         const responseText = response.text()
 
-        console.log('Gemini Response:', responseText)
-
-        // Extract JSON from response - handle markdown code blocks
+        // Parse JSON from response — handle markdown blocks and Gemini 2.5 thinking
         let jsonText = responseText
 
-        // Remove markdown code blocks if present
+        // Strip thinking blocks (<think>...</think>)
+        jsonText = jsonText.replace(/<think>[\s\S]*?<\/think>/g, '')
+
+        // Strip markdown code fences
         if (jsonText.includes('```json')) {
             jsonText = jsonText.split('```json')[1].split('```')[0]
         } else if (jsonText.includes('```')) {
             jsonText = jsonText.split('```')[1].split('```')[0]
         }
 
-        // Extract JSON object
+        // Extract first valid JSON object
         const jsonMatch = jsonText.match(/\{[\s\S]*\}/)
         if (jsonMatch) {
             const data = JSON.parse(jsonMatch[0])
-            return data.questions || []
+            const questions = data.questions || []
+            // Validate each question has required fields
+            const valid = questions.filter(q => q.question && Array.isArray(q.options) && q.options.length > 0)
+            if (valid.length > 0) return valid
         }
 
-        throw new Error('Failed to parse AI response')
+        throw new Error('Failed to parse AI response — no valid questions found')
     } catch (error) {
         console.error('Error generating prerequisite survey:', error)
         throw new Error(`Failed to generate prerequisite survey: ${error.message}`)
@@ -477,7 +481,9 @@ Be specific and actionable. Reference actual topics from the document.`
 }
 
 /**
- * Generate adaptive quiz based on survey results and study guidance
+ * Generate adaptive quiz based on survey results and study guidance.
+ * Phase 6 upgrade: each question now carries a `difficulty` tag (easy/medium/hard)
+ * so the Quiz page can escalate/de-escalate dynamically.
  */
 export async function generateAdaptiveQuiz(documentText, surveyQuestions, surveyAnswers, studyGuidance) {
     try {
@@ -488,85 +494,190 @@ export async function generateAdaptiveQuiz(documentText, surveyQuestions, survey
             maxOutputTokens: 2048
         })
 
-        // Identify weak areas from survey
         const weakTopics = []
         surveyQuestions.forEach((q, index) => {
-            if (surveyAnswers[index] !== q.correctAnswer) {
-                weakTopics.push(q.question)
-            }
+            if (surveyAnswers[index] !== q.correctAnswer) weakTopics.push(q.question)
         })
 
         const learnerLevel = studyGuidance?.learnerLevel || 'Intermediate'
         const priorityTopics = Array.isArray(studyGuidance?.priorityTopics)
-            ? studyGuidance.priorityTopics
-            : ['General concepts']
+            ? studyGuidance.priorityTopics : ['General concepts']
 
-        const prompt = `Based on the prerequisite survey results and study guidance, generate an adaptive quiz.
+        const difficultyDistribution =
+            learnerLevel === 'Beginner'     ? '5 easy, 4 medium, 1 hard' :
+            learnerLevel === 'Advanced'     ? '1 easy, 3 medium, 6 hard' :
+                                              '2 easy, 5 medium, 3 hard'
+
+        const prompt = `Generate an adaptive quiz (10 questions) for a ${learnerLevel} learner.
 
 Document Content:
-${documentText ? documentText.substring(0, 5000) : 'No document text available.'}
+${documentText ? documentText.substring(0, 5000) : 'General study content.'}
 
-Survey Performance:
-- Learner Level: ${learnerLevel}
-- Priority Topics: ${priorityTopics.join(', ')}
+Priority Topics: ${priorityTopics.join(', ')}
+Weak Areas from Survey: ${weakTopics.length > 0 ? weakTopics.join('; ') : 'None identified'}
 
-Questions User Got Wrong:
-${weakTopics.map((q, i) => `${i + 1}. ${q}`).join('\n')}
+Difficulty distribution: ${difficultyDistribution}
+- easy: factual recall, single-concept
+- medium: application and comparison
+- hard: synthesis, multi-step reasoning, edge cases
 
-Generate an adaptive quiz with 10 multiple-choice questions that:
-1. Focus heavily on the priority topics identified
-2. Target the learner's level (${learnerLevel})
-3. Include questions related to areas they struggled with in the survey
-4. Cover practical applications and deeper understanding
-5. Progress from foundational to more challenging concepts
-
-Requirements:
-- Create exactly 10 multiple-choice questions
-- Each question should have 4 options
-- Mark the correct answer index (0-3)
-- Questions should be clear, specific, and test understanding
-- Adapt difficulty to ${learnerLevel} level
-
-Respond ONLY with valid JSON in this exact format:
+Respond ONLY with valid JSON:
 {
   "questions": [
     {
-      "question": "Question text here?",
+      "question": "Question text?",
       "options": ["Option A", "Option B", "Option C", "Option D"],
-      "correctAnswer": 0
+      "correctAnswer": 0,
+      "difficulty": "easy",
+      "topic": "Topic name"
     }
   ]
 }
 
-Generate exactly 10 adaptive questions.`
+Generate exactly 10 questions, ordered easy → hard.`
 
         const result = await model.generateContent(prompt)
-        const response = await result.response
-        const responseText = response.text()
+        let text = result.response.text()
 
-        console.log('Adaptive Quiz Response:', responseText)
+        // Strip Gemini 2.5 thinking blocks
+        text = text.replace(/<think>[\s\S]*?<\/think>/g, '')
+        if (text.includes('```json')) text = text.split('```json')[1].split('```')[0]
+        else if (text.includes('```')) text = text.split('```')[1].split('```')[0]
 
-        // Extract JSON from response
-        let jsonText = responseText
-
-        // Remove markdown code blocks if present
-        if (jsonText.includes('```json')) {
-            jsonText = jsonText.split('```json')[1].split('```')[0]
-        } else if (jsonText.includes('```')) {
-            jsonText = jsonText.split('```')[1].split('```')[0]
+        const match = text.match(/\{[\s\S]*\}/)
+        if (match) {
+            const questions = JSON.parse(match[0]).questions || []
+            const valid = questions.filter(q => q.question && Array.isArray(q.options) && q.options.length > 0)
+            if (valid.length > 0) return valid
         }
-
-        // Extract JSON object
-        const jsonMatch = jsonText.match(/\{[\s\S]*\}/)
-        if (jsonMatch) {
-            const data = JSON.parse(jsonMatch[0])
-            return data.questions || []
-        }
-
         throw new Error('Failed to parse AI response')
     } catch (error) {
         console.error('Error generating adaptive quiz:', error)
         throw new Error(`Failed to generate adaptive quiz: ${error.message}`)
+    }
+}
+
+// ─── Phase 6: Dynamic Difficulty Mid-Quiz ─────────────────────────────────────
+
+/**
+ * Phase 6 — Dynamic Difficulty Engine.
+ * Call this after every 3 answered questions to fetch the next question
+ * at an adjusted difficulty based on running accuracy.
+ *
+ * @param {string} documentText
+ * @param {Array}  answeredQuestions - questions answered so far with user performance
+ * @param {number} runningAccuracy   - 0-100 percentage correct so far
+ * @param {string} currentDifficulty - 'easy' | 'medium' | 'hard'
+ * @returns {Promise<object>} - A single question object with difficulty tag
+ */
+export async function generateNextDynamicQuestion(documentText, answeredQuestions, runningAccuracy, currentDifficulty) {
+    try {
+        const model = getModel({ temperature: 0.75, maxOutputTokens: 512 })
+
+        // Escalation logic
+        let targetDifficulty = currentDifficulty
+        if (runningAccuracy >= 80) {
+            targetDifficulty = currentDifficulty === 'easy' ? 'medium'
+                : currentDifficulty === 'medium' ? 'hard' : 'hard'
+        } else if (runningAccuracy < 40) {
+            targetDifficulty = currentDifficulty === 'hard' ? 'medium'
+                : currentDifficulty === 'medium' ? 'easy' : 'easy'
+        }
+
+        const coveredTopics = answeredQuestions.map(q => q.topic || q.question?.substring(0, 40)).join(', ')
+
+        const prompt = `Generate ONE ${targetDifficulty}-difficulty multiple-choice question.
+
+Study material: ${documentText ? documentText.substring(0, 3000) : 'General academic content.'}
+Topics already covered: ${coveredTopics}
+Student's current accuracy: ${runningAccuracy}%
+Required difficulty: ${targetDifficulty}
+
+- easy: factual recall
+- medium: application
+- hard: synthesis / multi-step reasoning
+
+Do NOT repeat topics already covered.
+Respond ONLY with valid JSON:
+{
+  "question": "Question text?",
+  "options": ["A", "B", "C", "D"],
+  "correctAnswer": 0,
+  "difficulty": "${targetDifficulty}",
+  "topic": "Topic name"
+}`
+
+        const result = await model.generateContent(prompt)
+        let text = result.response.text()
+        if (text.includes('```json')) text = text.split('```json')[1].split('```')[0]
+        else if (text.includes('```')) text = text.split('```')[1].split('```')[0]
+        const match = text.match(/\{[\s\S]*\}/)
+        if (match) return JSON.parse(match[0])
+        throw new Error('Failed to parse dynamic question')
+    } catch (error) {
+        console.error('generateNextDynamicQuestion error:', error)
+        throw error
+    }
+}
+
+// ─── Phase 6: Smart Recovery Quiz ─────────────────────────────────────────────
+
+/**
+ * Phase 6 — Smart Re-Study: generate a targeted "Recovery Quiz" based on
+ * the specific questions a student got wrong.
+ *
+ * @param {string} documentText
+ * @param {Array}  missedQuestions - array of { question, correctAnswer, topic, options }
+ * @returns {Promise<Array>} - 5 recovery questions (simpler, with hints)
+ */
+export async function generateRecoveryQuiz(documentText, missedQuestions) {
+    try {
+        const model = getModel({ temperature: 0.65, maxOutputTokens: 2048 })
+
+        const missedSummary = missedQuestions.map((q, i) =>
+            `${i + 1}. "${q.question}" — Correct answer was: ${q.options?.[q.correctAnswer] || q.correctAnswer}`
+        ).join('\n')
+
+        const prompt = `A student struggled with these specific concepts:
+${missedSummary}
+
+Using this study material as context:
+${documentText ? documentText.substring(0, 5000) : 'General academic content.'}
+
+Generate a "Recovery Quiz" — 5 questions specifically designed to reinforce exactly what they missed.
+
+Recovery Quiz rules:
+1. Each question must directly target one of the missed concepts above
+2. Start easier than the original question — build understanding step by step
+3. Include a short "hint" field (1 sentence) pointing the student in the right direction
+4. Do NOT just rephrase the original question — test from a different angle
+
+Respond ONLY with valid JSON:
+{
+  "recoveryQuestions": [
+    {
+      "question": "Targeted question text?",
+      "options": ["Option A", "Option B", "Option C", "Option D"],
+      "correctAnswer": 0,
+      "hint": "Think about how X relates to Y...",
+      "targetsConcept": "Original missed concept",
+      "difficulty": "easy"
+    }
+  ]
+}
+
+Generate exactly 5 recovery questions.`
+
+        const result = await model.generateContent(prompt)
+        let text = result.response.text()
+        if (text.includes('```json')) text = text.split('```json')[1].split('```')[0]
+        else if (text.includes('```')) text = text.split('```')[1].split('```')[0]
+        const match = text.match(/\{[\s\S]*\}/)
+        if (match) return JSON.parse(match[0]).recoveryQuestions || []
+        throw new Error('Failed to parse recovery quiz')
+    } catch (error) {
+        console.error('generateRecoveryQuiz error:', error)
+        throw error
     }
 }
 

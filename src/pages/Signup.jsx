@@ -3,7 +3,21 @@ import { useNavigate, Link } from "react-router-dom";
 import { createUserWithEmailAndPassword, sendEmailVerification, GoogleAuthProvider, OAuthProvider, signInWithPopup } from "firebase/auth";
 import { doc, setDoc } from "firebase/firestore";
 import { auth, db } from "../firebase";
+import { ensureUserProfile } from "../services/firestoreService";
+import { initializeUserStats } from "../services/gamificationService";
 import './SignupNew.css';
+
+// Seed Firestore on first sign-up
+async function seedUserOnSignup(user, extraData = {}) {
+  try {
+    await Promise.all([
+      ensureUserProfile(user.displayName || extraData.name || user.email?.split('@')[0]),
+      initializeUserStats(user.uid)
+    ])
+  } catch (e) {
+    console.warn('seedUserOnSignup:', e.message)
+  }
+}
 
 const goals = [
   { id: 'exam', icon: '📚', label: 'Exam Prep', desc: 'Ace your tests' },
@@ -60,22 +74,18 @@ function Signup() {
     try {
       const provider = new GoogleAuthProvider();
       const result = await signInWithPopup(auth, provider);
-      
       await setDoc(doc(db, "users", result.user.uid), {
         name: result.user.displayName,
         email: result.user.email,
-        points: 0,
-        level: 1,
+        points: 0, level: 1,
         createdAt: new Date(),
-      });
-      
+      }, { merge: true });
+      await seedUserOnSignup(result.user)
       navigate("/dashboard");
     } catch (err) {
       if (err.code === 'auth/account-exists-with-different-credential') {
         setError('This email is already registered with GitHub. Please use GitHub sign-in.');
-      } else {
-        setError(err.message);
-      }
+      } else { setError(err.message); }
     }
   };
 
@@ -83,22 +93,18 @@ function Signup() {
     try {
       const provider = new OAuthProvider('github.com');
       const result = await signInWithPopup(auth, provider);
-      
       await setDoc(doc(db, "users", result.user.uid), {
         name: result.user.displayName || 'GitHub User',
         email: result.user.email,
-        points: 0,
-        level: 1,
+        points: 0, level: 1,
         createdAt: new Date(),
-      });
-      
+      }, { merge: true });
+      await seedUserOnSignup(result.user)
       navigate("/dashboard");
     } catch (err) {
       if (err.code === 'auth/account-exists-with-different-credential') {
         setError('This email is already registered with Google. Please use Google sign-in.');
-      } else {
-        setError(err.message);
-      }
+      } else { setError(err.message); }
     }
   };
 

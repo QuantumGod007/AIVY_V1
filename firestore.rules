@@ -1,0 +1,42 @@
+// ============================================================
+// AIVY — Firebase Firestore Security Rules
+// Copy this into: Firebase Console → Firestore → Rules tab
+// ============================================================
+//
+// Architecture:
+//  users/{uid}                       — public profile (name, email)
+//  users/{uid}/gamification/stats    — private XP & badges
+//  users/{uid}/quizzes/current       — current quiz in progress
+//  users/{uid}/results/{id}          — quiz result history
+//  users/{uid}/sessions/{id}         — archived session history
+//  users/{uid}/documents/{id}        — uploaded document metadata
+//  users/{uid}/studyPlans/current    — study planner
+//  users/{uid}/flashcards/current    — flashcard set
+//  users/{uid}/tutor/history         — AI tutor chat history
+//  leaderboard/{uid}                 — denormalized flat doc (readable by all auth users)
+// ============================================================
+
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ─── User sub-collections ─────────────────────────────────────────────────
+    // Users can only read & write their OWN data
+    match /users/{userId} {
+      allow read: if request.auth != null && request.auth.uid == userId;
+      allow write: if request.auth != null && request.auth.uid == userId;
+
+      match /{document=**} {
+        allow read, write: if request.auth != null && request.auth.uid == userId;
+      }
+    }
+
+    // ─── Leaderboard (denormalized, flat collection) ──────────────────────────
+    // Any authenticated user can READ the leaderboard
+    // Only the owner can WRITE their own entry
+    match /leaderboard/{userId} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null && request.auth.uid == userId;
+    }
+  }
+}
