@@ -151,8 +151,8 @@ Respond ONLY with valid JSON in this exact format (no extra text, no markdown):
   ]
 }`
 
-        const text = await callGeminiProxy(prompt);
-        const data = extractJSON(text);
+        const text_resp = await callGeminiProxy(prompt);
+        const data = extractJSON(text_resp);
 
         if (!data?.questions?.length) {
             throw new Error('AI returned no questions — invalid response structure')
@@ -971,8 +971,8 @@ Output ONLY valid JSON:
 Study Material:
 ${fullDocumentText ? fullDocumentText.substring(0, 15000) : 'General content.'}`
 
-        const text = await callGeminiProxy(prompt);
-        return extractJSON(text);
+        const text_resp = await callGeminiProxy(prompt);
+        return extractJSON(text_resp);
     } catch (error) {
         console.error('generateSmartReStudyPath error:', error)
         return {
