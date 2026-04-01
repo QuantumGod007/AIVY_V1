@@ -12,6 +12,8 @@ import * as pdfjsLib from 'pdfjs-dist'
 import pdfjsWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorker
 
+import { callGeminiProxy } from './geminiService'
+
 // ─── Supported Types ──────────────────────────────────────────────────────────
 
 export const SUPPORTED_TYPES = {
@@ -199,37 +201,30 @@ export async function extractTextFromImage(imageFile) {
 /**
  * Shared helper to call Gemini Vision for OCR tasks.
  */
+/**
+ * Shared helper to call Gemini Vision for OCR tasks via Secure Proxy.
+ */
 async function performGeminiOCR(base64Data, mimeType) {
-    const { GoogleGenerativeAI } = await import('@google/generative-ai')
-    const API_KEY = import.meta.env.VITE_GEMINI_API_KEY
-    if (!API_KEY) throw new Error('Gemini API key missing')
-
-    const genAI = new GoogleGenerativeAI(API_KEY)
-    const model = genAI.getGenerativeModel(
-        { model: 'gemini-2.5-flash' },
-        { apiVersion: 'v1' }
-    )
-
     const prompt = `You are an expert OCR engine. Extract ALL text from this document as accurately as possible.
     
 Instructions:
-- Preserve the original structure and formatting as much as possible
-- Include headings, bullet points, numbered lists, and paragraphs
-- If the document contains a table, represent it in a clear text format
-- If handwriting is present, do your best to transcribe it accurately
-- Output ONLY the extracted text — no commentary, no preamble`
+- Preserve the original structure and formatting
+- Include headings, bullet points, and paragraphs
+- Represent tables in a clear text format
+- Transcribe handwriting as accurately as possible
+- Output ONLY text — no commentary`
 
-    const result = await model.generateContent([
-        prompt,
+    const parts = [
+        { text: prompt },
         {
             inlineData: {
                 data: base64Data,
                 mimeType: mimeType
             }
         }
-    ])
+    ]
 
-    return result.response.text().trim()
+    return await callGeminiProxy(parts, { model: 'gemini-2.5-flash' })
 }
 
 // ─── DOCX Basic Extraction ────────────────────────────────────────────────────

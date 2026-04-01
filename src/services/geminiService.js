@@ -11,44 +11,54 @@
  * JSON Parsing: Robust extraction handles markdown fences + thinking blocks
  */
 
-import { GoogleGenerativeAI } from '@google/generative-ai'
-
-const API_KEY = import.meta.env.VITE_GEMINI_API_KEY
-
-if (!API_KEY) {
-    console.error('Gemini API key is missing! Add VITE_GEMINI_API_KEY to your .env file.')
-}
-
-const genAI = new GoogleGenerativeAI(API_KEY)
 
 // ─── Model Configuration ──────────────────────────────────────────────────────
-// Switched to stable v1 and robust model names to prevent 404 errors
 const MODEL_PRO   = 'gemini-2.5-pro'
 const MODEL_FLASH = 'gemini-2.5-flash'
-const API_VERSION = 'v1'
 
-// Default model name for getModel
+// Default model name
 const MODEL_NAME = MODEL_FLASH 
 
 /**
- * Get a configured gemini-2.5-pro generative model.
- * @param {object} generationConfig - Optional generation config overrides
+ * Core Proxy Caller: Replaces direct SDK usage to hide API Keys.
+ * @param {string|array} prompt - User prompt or array of parts (text/inlineData)
  */
-function getModel(generationConfig = {}) {
-    const { model, ...config } = generationConfig
-    return genAI.getGenerativeModel(
-        {
-            model: model || MODEL_NAME,
-            generationConfig: {
-                temperature: 0.7,
-                topK: 40,
-                topP: 0.95,
-                maxOutputTokens: 8192,
-                ...config
-            }
-        },
-        { apiVersion: API_VERSION }
-    )
+export async function callGeminiProxy(prompt, options = {}) {
+    const { model = MODEL_NAME, history = [], generationConfig = {} } = options;
+    
+    const contents = [...history];
+    if (prompt) {
+        const parts = Array.isArray(prompt) ? prompt : [{ text: prompt }];
+        contents.push({ role: 'user', parts });
+    }
+
+    const payload = {
+        model,
+        contents,
+        generationConfig: {
+            temperature: 0.7,
+            maxOutputTokens: 8192,
+            ...generationConfig
+        }
+    };
+
+    const response = await fetch('/api/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+    });
+
+    if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error?.message || `Proxy failed with status ${response.status}`);
+    }
+
+    const data = await response.json();
+    if (data.error) {
+        throw new Error(data.error.message || 'Gemini API Error via Proxy');
+    }
+
+    return data.candidates?.[0]?.content?.parts?.[0]?.text || '';
 }
 
 // ─── JSON Parsing Helper ──────────────────────────────────────────────────────
@@ -116,7 +126,6 @@ function extractJSON(text) {
  */
 export async function generatePrerequisiteSurvey(text) {
     try {
-        const model = getModel({ temperature: 0.7 })
 
         const prompt = `You are an expert academic assessor. Based on the following educational content, generate a prerequisite knowledge survey with exactly 5 questions to assess what the student already knows BEFORE studying this material.
 
@@ -142,9 +151,8 @@ Respond ONLY with valid JSON in this exact format (no extra text, no markdown):
   ]
 }`
 
-        const result = await model.generateContent(prompt)
-        const text_response = result.response.text()
-        const data = extractJSON(text_response)
+        const text = await callGeminiProxy(prompt);
+        const data = extractJSON(text);
 
         if (!data?.questions?.length) {
             throw new Error('AI returned no questions — invalid response structure')
@@ -173,7 +181,6 @@ Respond ONLY with valid JSON in this exact format (no extra text, no markdown):
  */
 export async function analyzeDocument(text) {
     try {
-        const model = getModel({ temperature: 0.4 })
 
         const prompt = `Analyze the following educational content and extract key information.
 
@@ -190,8 +197,8 @@ Respond ONLY with valid JSON:
 Difficulty must be exactly one of: "Beginner", "Intermediate", "Advanced"
 Topics should be 5-7 specific subject areas covered.`
 
-        const result = await model.generateContent(prompt)
-        const data = extractJSON(result.response.text())
+        const text_resp = await callGeminiProxy(prompt);
+        const data = extractJSON(text_resp);
 
         if (data?.summary) return data
 
@@ -219,7 +226,6 @@ Topics should be 5-7 specific subject areas covered.`
  */
 export async function generateTopicWiseSummary(text) {
     try {
-        const model = getModel({ temperature: 0.5 })
 
         const prompt = `You are an expert academic summarizer. Analyze the following educational content and break it into clear topic-wise summaries.
 
@@ -247,8 +253,8 @@ Respond ONLY with valid JSON:
   ]
 }`
 
-        const result = await model.generateContent(prompt)
-        const data = extractJSON(result.response.text())
+        const text_resp = await callGeminiProxy(prompt);
+        const data = extractJSON(text_resp);
 
         return data?.topics || []
     } catch (error) {
@@ -267,7 +273,6 @@ Respond ONLY with valid JSON:
  */
 export async function generateQuiz(text, numQuestions = 10) {
     try {
-        const model = getModel({ temperature: 0.7 })
 
         const prompt = `You are an expert exam setter. Based on the following educational content, generate exactly ${numQuestions} high-quality multiple-choice quiz questions.
 
@@ -294,8 +299,8 @@ Respond ONLY with valid JSON:
   ]
 }`
 
-        const result = await model.generateContent(prompt)
-        const data = extractJSON(result.response.text())
+        const text_resp = await callGeminiProxy(prompt, { model: MODEL_FLASH, generationConfig: { temperature: 0.7 } });
+        const data = extractJSON(text_resp);
 
         return data?.questions?.filter(q =>
             q.question && Array.isArray(q.options) && q.options.length === 4
@@ -320,7 +325,6 @@ export async function analyzeQuizResults(questions, userAnswers, score, total) {
     const accuracy = Math.round((score / total) * 100)
 
     try {
-        const model = getModel({ temperature: 0.6, maxOutputTokens: 2048 })
 
         const wrongQuestions = questions
             .map((q, idx) => ({
@@ -349,8 +353,8 @@ Respond ONLY with valid JSON:
   "threat": "Academic risks if these gaps are not addressed (1 sentence)"
 }`
 
-        const result = await model.generateContent(prompt)
-        const data = extractJSON(result.response.text())
+        const text_resp = await callGeminiProxy(prompt);
+        const data = extractJSON(text_resp);
 
         if (data?.strength) return data
 
@@ -394,7 +398,6 @@ export async function generateStudyGuidance(documentText, surveyQuestions, surve
         : 50
 
     try {
-        const model = getModel({ temperature: 0.6, maxOutputTokens: 2048 })
 
         const wrongTopics = surveyQuestions
             .filter((q, i) => surveyAnswers[i] !== q.correctAnswer)
@@ -424,8 +427,8 @@ learnerLevel must be exactly one of: "Beginner", "Intermediate", "Advanced"
 studyDuration should be "15 minutes", "30 minutes", "45 minutes", or "60 minutes"
 priorityTopics must reference actual topics from the document content above`
 
-        const result = await model.generateContent(prompt)
-        const data = extractJSON(result.response.text())
+        const text_resp = await callGeminiProxy(prompt);
+        const data = extractJSON(text_resp);
 
         if (data?.learnerLevel) return data
 
@@ -457,7 +460,6 @@ priorityTopics must reference actual topics from the document content above`
  */
 export async function generateAdaptiveQuiz(documentText, surveyQuestions, surveyAnswers, studyGuidance) {
     try {
-        const model = getModel({ temperature: 0.7 })
 
         const weakTopics = surveyQuestions
             .filter((q, i) => surveyAnswers[i] !== q.correctAnswer)
@@ -510,8 +512,8 @@ Respond ONLY with valid JSON:
 
 Generate exactly 10 questions.`
 
-        const result = await model.generateContent(prompt)
-        const data = extractJSON(result.response.text())
+        const text_resp = await callGeminiProxy(prompt);
+        const data = extractJSON(text_resp);
 
         const valid = (data?.questions || []).filter(q =>
             q.question && Array.isArray(q.options) && q.options.length === 4
@@ -539,7 +541,6 @@ Generate exactly 10 questions.`
  */
 export async function generateNextDynamicQuestion(documentText, answeredQuestions, runningAccuracy, currentDifficulty) {
     try {
-        const model = getModel({ temperature: 0.75, maxOutputTokens: 1024 })
 
         // Escalation / de-escalation logic
         let targetDifficulty = currentDifficulty
@@ -578,8 +579,8 @@ Respond ONLY with valid JSON:
   "topic": "Topic name"
 }`
 
-        const result = await model.generateContent(prompt)
-        const data = extractJSON(result.response.text())
+        const text_resp = await callGeminiProxy(prompt);
+        const data = extractJSON(text_resp);
 
         if (!data?.question) throw new Error('Invalid dynamic question response')
         return data
@@ -600,7 +601,6 @@ Respond ONLY with valid JSON:
  */
 export async function generateRecoveryQuiz(documentText, missedQuestions) {
     try {
-        const model = getModel({ temperature: 0.65 })
 
         const missedSummary = missedQuestions
             .map((q, i) => `${i + 1}. "${q.question}" — Correct: "${q.options?.[q.correctAnswer] || q.correctAnswer}"`)
@@ -638,8 +638,8 @@ Respond ONLY with valid JSON:
 
 Generate exactly 5 recovery questions.`
 
-        const result = await model.generateContent(prompt)
-        const data = extractJSON(result.response.text())
+        const text_resp = await callGeminiProxy(prompt);
+        const data = extractJSON(text_resp);
 
         const questions = data?.recoveryQuestions || []
         if (questions.length === 0) throw new Error('No recovery questions generated')
@@ -663,7 +663,6 @@ Generate exactly 5 recovery questions.`
  */
 export async function generateStudyPlan(documentText, subject, examDate, learnerLevel = 'Intermediate') {
     try {
-        const model = getModel({ temperature: 0.6 })
 
         const today = new Date().toISOString().split('T')[0]
         const daysRemaining = Math.max(1, Math.ceil((new Date(examDate) - new Date()) / (1000 * 60 * 60 * 24)))
@@ -710,8 +709,8 @@ Respond ONLY with valid JSON:
 
 Generate exactly ${planDays} days.`
 
-        const result = await model.generateContent(prompt)
-        const data = extractJSON(result.response.text())
+        const text_resp = await callGeminiProxy(prompt);
+        const data = extractJSON(text_resp);
 
         if (!data?.days?.length) throw new Error('No study plan days generated')
         return data
@@ -732,7 +731,6 @@ Generate exactly ${planDays} days.`
  */
 export async function generateFlashcards(documentText, topic = '') {
     try {
-        const model = getModel({ temperature: 0.6 })
 
         const source = documentText
             ? `Based on this study material:\n${documentText.substring(0, 30000)}`
@@ -762,8 +760,8 @@ Respond ONLY with valid JSON:
 
 Generate exactly 20 flashcards.`
 
-        const result = await model.generateContent(prompt)
-        const data = extractJSON(result.response.text())
+        const text_resp = await callGeminiProxy(prompt);
+        const data = extractJSON(text_resp);
 
         const cards = data?.cards || []
         if (cards.length === 0) throw new Error('No flashcards generated')
@@ -799,7 +797,6 @@ function getOrCreateChatSession(documentText, historyMessages = []) {
     }
 
     if (!_activeChatSession) {
-        const model = getModel({ temperature: 0.8, maxOutputTokens: 8192 })
 
         const systemContext = documentText
             ? `You are AIVY Intelligence, an expert academic research assistant. The student is engaging with the following source material:\n\n${documentText.substring(0, 30000)}\n\nProvide sophisticated, synthesised, and professional responses. Use structured analysis and deep reasoning. Always guide understanding through rigorous academic principles rather than just giving answers.`
@@ -869,7 +866,6 @@ export async function generateTutorResponse(documentText, message, chatHistory =
  */
 export async function analyzeGlobalProgress(sessions, stats) {
     try {
-        const model = getModel({ temperature: 0.6, maxOutputTokens: 2048 })
 
         const historySummary = sessions.length > 0
             ? sessions.map((s, i) => `${i + 1}. ${s.documentName || 'Unknown doc'}: ${s.accuracy || 0}% accuracy (${s.score || 0}/${s.total || 0})`).join('\n')
@@ -900,8 +896,8 @@ Respond ONLY with valid JSON:
 
 Ensure the insights are encouraging, data-driven based on the history provided, and academically professional.`
 
-        const result = await model.generateContent(prompt)
-        const data = extractJSON(result.response.text())
+        const text_resp = await callGeminiProxy(prompt);
+        const data = extractJSON(text_resp);
 
         if (data?.learningStyle) return data
 
@@ -927,7 +923,6 @@ Ensure the insights are encouraging, data-driven based on the history provided, 
  */
 export async function summarizeSession(quizData) {
     try {
-        const model = getModel({ temperature: 0.5, maxOutputTokens: 512 })
 
         const accuracy = Math.round((quizData.score / quizData.total) * 100)
         const missedCount = quizData.total - quizData.score
@@ -957,7 +952,6 @@ Max 60 words total.`
  */
 export async function generateSmartReStudyPath(quizResult, fullDocumentText) {
     try {
-        const model = getModel({ model: MODEL_PRO, temperature: 0.6 })
 
         const missed = (quizResult.questions || []).filter((q, i) => quizResult.userAnswers[i] !== q.correctAnswer)
         const missedTopics = missed.map(m => m.topic || m.question).slice(0, 3)
@@ -977,8 +971,8 @@ Output ONLY valid JSON:
 Study Material:
 ${fullDocumentText ? fullDocumentText.substring(0, 15000) : 'General content.'}`
 
-        const result = await model.generateContent(prompt)
-        return extractJSON(result.response.text())
+        const text = await callGeminiProxy(prompt);
+        return extractJSON(text);
     } catch (error) {
         console.error('generateSmartReStudyPath error:', error)
         return {
