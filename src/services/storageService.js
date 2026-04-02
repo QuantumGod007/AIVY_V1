@@ -58,6 +58,14 @@ function safeTruncate(obj) {
 }
 
 /**
+ * Generate a safe ID for Firestore paths from a document name.
+ */
+export function getContextId(docName) {
+    if (!docName) return 'default'
+    return docName.replace(/[^a-zA-Z0-9]/g, '_').substring(0, 100)
+}
+
+/**
  * Save a document
  */
 export async function saveDocument(document) {
@@ -150,39 +158,67 @@ export async function deleteDocument(id) {
 export async function saveCurrentQuiz(quiz) {
     try {
         const userId = getUserId()
-        const quizRef = doc(db, 'users', userId, 'quizzes', 'current')
+        const docName = quiz.documentName || getActiveContextName() || 'Untitled'
+        const contextId = getContextId(docName)
+        
+        // Save to context-specific silo
+        const contextRef = doc(db, 'users', userId, 'contexts', contextId)
+        await setDoc(contextRef, {
+            currentQuiz: {
+                ...safeTruncate(quiz),
+                updatedAt: serverTimestamp()
+            }
+        }, { merge: true })
 
+        // Also update legacy 'current' for simple dashboard fallback
+        const quizRef = doc(db, 'users', userId, 'quizzes', 'current')
         await setDoc(quizRef, {
             ...safeTruncate(quiz),
             updatedAt: serverTimestamp()
         })
-        if (quiz.documentName) setActiveContext(quiz.documentName)
+        
+        setActiveContext(docName)
     } catch (error) {
         console.error('Error saving quiz:', error)
-        throw error
     }
 }
 
 /**
- * Get current quiz for user
+ * Get the current quiz for the ACTIVE context
  */
-export async function getCurrentQuiz() {
+export async function getCurrentQuiz(specificDocName = null) {
     try {
         const userId = getUserId()
-        const quizRef = doc(db, 'users', userId, 'quizzes', 'current')
-        const quizSnap = await getDoc(quizRef)
+        const docName = specificDocName || getActiveContextName()
+        
+        if (!docName) {
+            // Fallback to legacy current if no context selected yet
+            const quizRef = doc(db, 'users', userId, 'quizzes', 'current')
+            const snap = await getDoc(quizRef)
+            return snap.exists() ? snap.data() : null
+        }
 
-        if (quizSnap.exists()) {
-            const data = quizSnap.data()
-            if (data.documentName) setActiveContext(data.documentName)
+        const contextId = getContextId(docName)
+        const contextRef = doc(db, 'users', userId, 'contexts', contextId)
+        const contextSnap = await getDoc(contextRef)
+        
+        if (contextSnap.exists() && contextSnap.data().currentQuiz) {
+            const data = contextSnap.data().currentQuiz
             return {
                 ...data,
                 updatedAt: data.updatedAt?.toDate?.()?.toISOString() || data.updatedAt
             }
         }
+
+        // Fallback to legacy if this context is new but docName matches
+        const quizRef = doc(db, 'users', userId, 'quizzes', 'current')
+        const snap = await getDoc(quizRef)
+        const legacy = snap.exists() ? snap.data() : null
+        if (legacy && legacy.documentName === docName) return legacy
+        
         return null
     } catch (error) {
-        console.error('Error getting quiz:', error)
+        console.error('Error getting current quiz:', error)
         return null
     }
 }
