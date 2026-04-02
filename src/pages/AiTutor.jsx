@@ -8,8 +8,9 @@ import {
     MessageSquare, Send, Loader2, RotateCcw, 
     BookOpen, Brain, RefreshCw, FileText,
     ChevronRight, ChevronDown, ChevronUp,
-    Volume2, VolumeX
+    Volume2, VolumeX, Download, FileDown
 } from 'lucide-react'
+import { jsPDF } from 'jspdf'
 import { auth } from '../firebase'
 import { addXP } from '../services/gamificationService'
 import { db } from '../firebase'
@@ -152,6 +153,77 @@ function AiTutor() {
         if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage() }
     }
 
+    const exportResponseAsPDF = (text, index) => {
+        const doc = new jsPDF()
+        const pageWidth = doc.internal.pageSize.getWidth()
+        const pageHeight = doc.internal.pageSize.getHeight()
+        const margin = 20
+        const maxWidth = pageWidth - (margin * 2)
+        
+        // 1. Header Stylisation
+        doc.setFont('helvetica', 'bold')
+        doc.setFontSize(22)
+        doc.setTextColor(99, 102, 241) // AIVY Indigo
+        doc.text('AIVY Intelligence Study Report', margin, 30)
+        
+        doc.setFontSize(10)
+        doc.setTextColor(148, 163, 184) // Muted slate
+        const dateStr = new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })
+        doc.text(`Generated on: ${dateStr}`, margin, 38)
+        doc.text(`Document Context: ${documentName || 'General Research'}`, margin, 43)
+        
+        doc.setDrawColor(226, 232, 240)
+        doc.line(margin, 50, pageWidth - margin, 50)
+        
+        // 2. The Inquiry (The question that triggered this response)
+        let inquiryText = "General Research Inquiry"
+        if (index > 0 && messages[index - 1]?.role === 'user') {
+            inquiryText = messages[index - 1].text
+        }
+        
+        doc.setFontSize(12)
+        doc.setTextColor(30, 41, 59) // Slate 800
+        doc.text('INQUIRY:', margin, 65)
+        
+        doc.setFont('helvetica', 'normal')
+        const inquiryLines = doc.splitTextToSize(inquiryText, maxWidth)
+        doc.text(inquiryLines, margin, 72)
+        
+        let currentY = 72 + (inquiryLines.length * 7) + 15
+        
+        // 3. The Synthesis (AI Response)
+        doc.setFont('helvetica', 'bold')
+        doc.text('SYNTHESIS:', margin, currentY)
+        currentY += 8
+        
+        doc.setFont('helvetica', 'normal')
+        doc.setFontSize(11)
+        doc.setTextColor(51, 65, 85) // Slate 700
+        
+        // Clean markdown remnants for cleaner PDF
+        const cleanText = text.replace(/\*\*/g, '').replace(/### /g, '').replace(/# /g, '')
+        const synthesisLines = doc.splitTextToSize(cleanText, maxWidth)
+        
+        synthesisLines.forEach(line => {
+            if (currentY + 10 > pageHeight - margin) {
+                doc.addPage()
+                currentY = margin + 10
+            }
+            doc.text(line, margin, currentY)
+            currentY += 7
+        })
+        
+        // 4. Footer
+        const finalY = Math.min(currentY + 15, pageHeight - 10)
+        doc.setFontSize(8)
+        doc.setTextColor(148, 163, 184)
+        doc.text('© AIVY AI Development - Precision Learning Engine', margin, pageHeight - 10)
+        
+        // Save using subject name slug
+        const filename = `AIVY_Research_${(documentName || 'Session').replace(/[^a-zA-Z0-9]/g, '_')}.pdf`
+        doc.save(filename)
+    }
+
     const clearChat = async () => {
         stopSpeaking()
         const fresh = [WELCOME_MSG]
@@ -290,17 +362,30 @@ function AiTutor() {
                                                 {msg.ts ? new Date(msg.ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}
                                             </span>
                                             {msg.role === 'ai' && (
-                                                <button 
-                                                    onClick={() => toggleSpeech(msg.text, i)}
-                                                    style={{ 
-                                                        background: 'none', border: 'none', padding: '4px',
-                                                        cursor: 'pointer', color: 'inherit', display: 'flex',
-                                                        alignItems: 'center', opacity: speakingMsgIdx === i ? 1 : 0.6
-                                                    }}
-                                                    title={speakingMsgIdx === i ? "Stop speaking" : "Read aloud"}
-                                                >
-                                                    {speakingMsgIdx === i ? <VolumeX size={12} /> : <Volume2 size={12} />}
-                                                </button>
+                                                <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                                                    <button 
+                                                        onClick={() => toggleSpeech(msg.text, i)}
+                                                        style={{ 
+                                                            background: 'none', border: 'none', padding: '4px',
+                                                            cursor: 'pointer', color: 'inherit', display: 'flex',
+                                                            alignItems: 'center', opacity: speakingMsgIdx === i ? 1 : 0.6
+                                                        }}
+                                                        title={speakingMsgIdx === i ? "Stop speaking" : "Read aloud"}
+                                                    >
+                                                        {speakingMsgIdx === i ? <VolumeX size={12} /> : <Volume2 size={12} />}
+                                                    </button>
+                                                    <button 
+                                                        onClick={() => exportResponseAsPDF(msg.text, i)}
+                                                        style={{ 
+                                                            background: 'none', border: 'none', padding: '4px',
+                                                            cursor: 'pointer', color: 'inherit', display: 'flex',
+                                                            alignItems: 'center', opacity: 0.6
+                                                        }}
+                                                        title="Export as Research Note"
+                                                    >
+                                                        <FileDown size={12} />
+                                                    </button>
+                                                </div>
                                             )}
                                         </div>
                                     </div>
