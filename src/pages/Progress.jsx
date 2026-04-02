@@ -192,23 +192,12 @@ function Progress() {
       
       if (match) {
         await restoreSession(match.id)
+        window.location.reload() // Full sync
       } else {
         // Fallback: manually set active context if no session found
         setActiveContext(found.documentName)
+        window.location.reload() // Full sync
       }
-
-      // Update local state to reflect new context
-      setResults(found)
-      setSelectedResultId(id)
-      setSwot(null)
-      generateSwot(found)
-      setActiveTab('overview')
-      
-      // Stop TTS
-      synth.cancel()
-      setIsSpeaking(false)
-
-      // Optional: force sidebar refresh if needed, usually handled by polling
     } catch (err) {
       console.error('Switch context error:', err)
     } finally {

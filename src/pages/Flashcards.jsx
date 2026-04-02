@@ -78,6 +78,13 @@ function Flashcards() {
                 const sessions = await getArchivedSessions()
                 const unique = []
                 const names = new Set()
+                
+                // Add current if not in archives
+                if (quiz) {
+                    names.add(quiz.documentName)
+                    unique.push({ ...quiz, id: 'current', archivedAt: new Date() })
+                }
+
                 sessions.forEach(s => {
                     if (!names.has(s.documentName)) {
                         names.add(s.documentName); unique.push(s)
@@ -211,17 +218,31 @@ function Flashcards() {
                                             allSessions.map(s => (
                                                 <button
                                                     key={s.id}
-                                                    onClick={() => sessionRestore(s.id)}
+                                                    onClick={() => s.id === 'current' ? setShowTopicList(false) : sessionRestore(s.id)}
                                                     style={{
-                                                        width: '100%', padding: '0.75rem 1rem', border: 'none',
-                                                        background: 'transparent', display: 'flex', alignItems: 'center', gap: '0.6rem',
-                                                        cursor: 'pointer', textAlign: 'left', transition: 'all 0.2s'
+                                                        width: '100%', padding: '0.875rem 1rem', border: 'none',
+                                                        background: 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                                                        cursor: 'pointer', textAlign: 'left', transition: 'all 0.2s',
+                                                        borderBottom: '1px solid var(--color-border)'
                                                     }}
                                                     onMouseEnter={e => e.currentTarget.style.background = 'rgba(124, 58, 237, 0.05)'}
                                                     onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
                                                 >
-                                                    <BookOpen size={13} color="var(--color-text-muted)" />
-                                                    <span style={{ fontSize: '0.8rem', color: 'var(--color-text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{s.documentName}</span>
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', overflow: 'hidden' }}>
+                                                        <BookOpen size={13} color={s.documentName === quiz?.documentName ? "var(--color-accent)" : "var(--color-text-muted)"} />
+                                                        <div style={{ overflow: 'hidden' }}>
+                                                            <div style={{ fontSize: '0.78rem', color: 'var(--color-text-primary)', fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                                                {s.documentName}
+                                                            </div>
+                                                            {s.documentName === quiz?.documentName && <div style={{ fontSize: '0.6rem', color: 'var(--color-accent)', fontWeight: 800 }}>ACTIVE NOW</div>}
+                                                        </div>
+                                                    </div>
+                                                    {s.accuracy !== undefined && (
+                                                        <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                                                            <div style={{ fontSize: '0.75rem', fontWeight: 800, color: 'var(--color-text-primary)' }}>{s.accuracy}%</div>
+                                                            <div style={{ fontSize: '0.55rem', color: 'var(--color-text-muted)', textTransform: 'uppercase' }}>Acc</div>
+                                                        </div>
+                                                    )}
                                                 </button>
                                             ))
                                         )}
