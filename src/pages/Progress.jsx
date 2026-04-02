@@ -400,26 +400,88 @@ function Progress() {
   return (
     <div style={{ minHeight: '100vh', background: 'var(--color-bg-primary)', paddingBottom: '4rem' }}>
 
-      {/* Top nav bar */}
+      {/* Top nav bar with Context Switcher */}
       <div style={{
-        position: 'sticky', top: 0, zIndex: 50,
+        position: 'sticky', top: 0, zIndex: 100,
         background: 'var(--color-bg-card)', borderBottom: '1px solid var(--color-border)',
         backdropFilter: 'blur(12px)',
-        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        padding: '0.875rem 2rem'
+        display: 'flex', alignItems: 'center', gap: '1.5rem',
+        padding: '0.75rem 2rem'
       }}>
         <button onClick={() => navigate('/dashboard')} style={{
           display: 'flex', alignItems: 'center', gap: '0.5rem',
           background: 'transparent', border: '1px solid var(--color-border)',
           borderRadius: '8px', padding: '0.45rem 0.875rem',
           color: 'var(--color-text-primary)', cursor: 'pointer',
-          fontFamily: 'inherit', fontWeight: 500, fontSize: '0.85rem'
+          fontFamily: 'inherit', fontWeight: 500, fontSize: '0.85rem',
+          flexShrink: 0
         }}>
           <ArrowLeft size={16} /> Dashboard
         </button>
+
+        {/* Global Context Switcher for this page */}
+        <div style={{ position: 'relative', flex: 1, maxWidth: 400 }}>
+            <button 
+              onClick={() => setShowTopicMenu(!showTopicMenu)}
+              style={{
+                width: '100%', padding: '0.5rem 1rem', borderRadius: '10px',
+                background: 'var(--color-bg-elevated)', border: '1px solid var(--color-border)',
+                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                cursor: 'pointer', transition: 'all 0.2s ease'
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', overflow: 'hidden' }}>
+                <Brain size={16} color="var(--color-accent)" />
+                <span style={{ fontSize: '0.85rem', fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  {documentName || 'Select Research Topic'}
+                </span>
+              </div>
+              <ChevronDown size={14} color="var(--color-text-muted)" />
+            </button>
+
+            {showTopicMenu && (
+              <div className="fade-in" style={{
+                position: 'absolute', top: '110%', left: 0, right: 0, zIndex: 200,
+                background: 'var(--color-bg-elevated)', border: '1px solid var(--color-border)',
+                borderRadius: '12px', boxShadow: '0 20px 40px rgba(0,0,0,0.25)',
+                maxHeight: '300px', overflowY: 'auto', padding: '0.4rem'
+              }}>
+                {allResults.map(r => {
+                  const selected = r.id === selectedResultId
+                  const isActive = r.documentName === currentContext
+                  const isNew = !r.results
+                  return (
+                    <button
+                      key={r.id}
+                      onClick={() => handleSwitchResult(r.id)}
+                      style={{
+                        width: '100%', padding: '0.75rem 1rem', borderRadius: '8px', border: 'none',
+                        background: selected ? 'rgba(99,102,241,0.08)' : 'transparent',
+                        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                        cursor: 'pointer', transition: 'all 0.1s'
+                      }}
+                      onMouseEnter={e => e.currentTarget.style.background = 'rgba(99,102,241,0.05)'}
+                      onMouseLeave={e => e.currentTarget.style.background = selected ? 'rgba(99,102,241,0.08)' : 'transparent'}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', overflow: 'hidden' }}>
+                        {isNew ? <Sparkles size={14} color="#22c55e" /> : <TrendingUp size={14} color="var(--color-accent)" />}
+                        <div style={{ textAlign: 'left', overflow: 'hidden' }}>
+                          <div style={{ fontSize: '0.8rem', fontWeight: 600, whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>{r.documentName}</div>
+                          <div style={{ fontSize: '0.65rem', color: 'var(--color-text-muted)' }}>{isNew ? 'Ready for Intelligence' : `${r.accuracy}% Mastery`}</div>
+                        </div>
+                      </div>
+                      {isActive && <div style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--color-accent)' }} />}
+                    </button>
+                  )
+                })}
+              </div>
+            )}
+        </div>
+
         <div style={{
           display: 'flex', gap: '0.25rem', background: 'var(--color-bg-elevated)',
-          padding: '0.25rem', borderRadius: '100px', border: '1px solid var(--color-border)'
+          padding: '0.25rem', borderRadius: '100px', border: '1px solid var(--color-border)',
+          flexShrink: 0
         }}>
           {['overview', 'review'].map(tab => (
             <button
@@ -430,121 +492,19 @@ function Progress() {
                 fontSize: '0.75rem', fontWeight: 700, border: 'none', fontFamily: 'inherit',
                 background: activeTab === tab ? 'var(--color-accent)' : 'transparent',
                 color: activeTab === tab ? '#fff' : 'var(--color-text-muted)',
-                transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
-                textTransform: 'capitalize'
+                transition: 'all 0.2s', textTransform: 'capitalize'
               }}
             >
               {tab}
             </button>
           ))}
         </div>
-
-        <div style={{ width: 44 }} />
       </div>
 
       <div style={{ maxWidth: 840, margin: '0 auto', padding: '1.5rem' }}>
 
-        {/* ── TOPIC SELECTOR DROPDOWN ── */}
-        <div style={{ marginBottom: '2rem', position: 'relative' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem' }}>
-             <div style={{ display: 'flex', alignItems: 'center', gap: '0.625rem' }}>
-              <div style={{ width: 32, height: 32, borderRadius: '8px', background: 'var(--color-accent-soft)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--color-accent)' }}>
-                <Brain size={16} />
-              </div>
-              <div>
-                <h3 style={{ margin: 0, fontSize: '0.9rem', fontWeight: 700, color: 'var(--color-text-primary)' }}>Performance Intelligence</h3>
-                <p style={{ margin: 0, fontSize: '0.72rem', color: 'var(--color-text-muted)' }}>Analyze insights across your research documents</p>
-              </div>
-            </div>
-          </div>
-
-          <button 
-            onClick={() => setShowTopicMenu(!showTopicMenu)}
-            style={{
-              width: '100%', padding: '1.25rem 1.5rem', borderRadius: '16px',
-              background: 'var(--color-bg-card)', border: '1px solid var(--color-border)',
-              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-              cursor: 'pointer', transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
-              boxShadow: '0 4px 12px rgba(0,0,0,0.03)'
-            }}
-            onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--color-accent-soft)'}
-            onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--color-border)'}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-              <div style={{ 
-                width: 40, height: 40, borderRadius: '12px', 
-                background: 'rgba(99,102,241,0.08)', color: 'var(--color-accent)',
-                display: 'flex', alignItems: 'center', justifyContent: 'center'
-              }}>
-                <TrendingUp size={20} />
-              </div>
-              <div style={{ textAlign: 'left' }}>
-                <div style={{ fontSize: '0.7rem', fontWeight: 800, color: 'var(--color-accent)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-                  Selected Subject
-                </div>
-                <div style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--color-text-primary)' }}>
-                  {documentName || 'No subject selected'}
-                </div>
-              </div>
-            </div>
-            {showTopicMenu ? <ChevronUp size={20} color="var(--color-text-muted)" /> : <ChevronDown size={20} color="var(--color-text-muted)" />}
-          </button>
-
-          {showTopicMenu && (
-            <div className="fade-in" style={{
-              position: 'absolute', top: '105%', left: 0, right: 0, zIndex: 100,
-              background: 'var(--color-bg-elevated)', border: '1px solid var(--color-border)',
-              borderRadius: '20px', boxShadow: '0 20px 50px -12px rgba(0,0,0,0.25)',
-              maxHeight: '320px', overflowY: 'auto', padding: '0.5rem'
-            }}>
-              <div style={{ padding: '0.75rem 1rem', fontSize: '0.65rem', fontWeight: 800, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em', borderBottom: '1px solid var(--color-border)', marginBottom: '0.25rem' }}>
-                Switch Research Project
-              </div>
-              {allResults.map(r => {
-                const selected = r.id === selectedResultId
-                const isActive = r.documentName === currentContext
-                const isNew = r.id === 'current_active' && !r.results
-                
-                return (
-                  <button
-                    key={r.id}
-                    onClick={() => handleSwitchResult(r.id)}
-                    style={{
-                      width: '100%', padding: '1rem', borderRadius: '12px', border: 'none',
-                      background: selected ? 'rgba(99,102,241,0.08)' : 'transparent',
-                      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                      cursor: 'pointer', transition: 'all 0.15s ease'
-                    }}
-                    onMouseEnter={e => e.currentTarget.style.background = 'rgba(99,102,241,0.05)'}
-                    onMouseLeave={e => e.currentTarget.style.background = selected ? 'rgba(99,102,241,0.08)' : 'transparent'}
-                  >
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.85rem' }}>
-                      <div style={{ color: selected ? 'var(--color-accent)' : 'var(--color-text-muted)' }}>
-                        {isNew ? <Sparkles size={16} /> : <BookOpen size={16} />}
-                      </div>
-                      <div style={{ textAlign: 'left' }}>
-                        <div style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--color-text-primary)' }}>{r.documentName}</div>
-                        <div style={{ fontSize: '0.7rem', color: 'var(--color-text-muted)' }}>
-                          {isNew ? 'Ready for quiz' : `${r.accuracy}% Mastery`}
-                        </div>
-                      </div>
-                    </div>
-                    {(isActive || isNew) && (
-                      <div style={{
-                        background: isNew ? 'var(--color-success)' : 'var(--color-accent)', 
-                        color: '#fff', fontSize: '0.55rem', fontWeight: 900, 
-                        padding: '0.2rem 0.5rem', borderRadius: '100px', 
-                        display: 'flex', alignItems: 'center', gap: '0.2rem'
-                      }}>
-                        {isNew ? 'NEW' : 'ACTIVE'}
-                      </div>
-                    )}
-                  </button>
-                )
-              })}
-            </div>
-          )}
-        </div>
+        {/* Research HERO */}
+        <div style={{ height: '0.5rem' }} />
 
         {/* ── HERO: Score Card ──────────────────────────────────────────────── */}
         <div style={{
