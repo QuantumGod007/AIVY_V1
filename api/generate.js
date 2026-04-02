@@ -3,7 +3,7 @@ export default async function handler(req, res) {
         return res.status(405).json({ error: 'Method Not Allowed' });
     }
 
-    const { model = 'gemini-2.0-flash', contents, generationConfig } = req.body;
+    const { model = 'gemini-2.5-flash', contents, generationConfig } = req.body;
     let apiKey = process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY;
 
     if (!apiKey) {
@@ -13,7 +13,7 @@ export default async function handler(req, res) {
     apiKey = apiKey.trim(); // Ensure no whitespace from UI entry
 
     try {
-        const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+        const url = `https://generativelanguage.googleapis.com/v1/models/${model}:generateContent?key=${apiKey}`;
         
         // Securely pass the contents (which may contain text and/or inlineData)
         const response = await fetch(url, {
