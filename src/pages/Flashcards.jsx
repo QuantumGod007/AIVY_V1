@@ -48,6 +48,7 @@ function Flashcards() {
     const [allSessions, setAllSessions] = useState([])
     const [showTopicList, setShowTopicList] = useState(false)
     const [isSwitching, setIsSwitching] = useState(false)
+    const [activeQuiz, setActiveQuiz] = useState(null)
 
     useEffect(() => {
         const unsubscribe = onAuthStateChanged(auth, async (user) => {
@@ -55,6 +56,7 @@ function Flashcards() {
             setInitializing(true)
             try {
                 const quiz = await getCurrentQuiz()
+                setActiveQuiz(quiz)
                 if (quiz?.documentText) {
                     setDocumentLoaded(true)
                     const docName = quiz.documentName || 'Your Document'
@@ -229,12 +231,12 @@ function Flashcards() {
                                                     onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
                                                 >
                                                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', overflow: 'hidden' }}>
-                                                        <BookOpen size={13} color={s.documentName === quiz?.documentName ? "var(--color-accent)" : "var(--color-text-muted)"} />
+                                                        <BookOpen size={13} color={s.documentName === activeQuiz?.documentName ? "var(--color-accent)" : "var(--color-text-muted)"} />
                                                         <div style={{ overflow: 'hidden' }}>
                                                             <div style={{ fontSize: '0.78rem', color: 'var(--color-text-primary)', fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                                                                 {s.documentName}
                                                             </div>
-                                                            {s.documentName === quiz?.documentName && <div style={{ fontSize: '0.6rem', color: 'var(--color-accent)', fontWeight: 800 }}>ACTIVE NOW</div>}
+                                                            {s.documentName === activeQuiz?.documentName && <div style={{ fontSize: '0.6rem', color: 'var(--color-accent)', fontWeight: 800 }}>ACTIVE NOW</div>}
                                                         </div>
                                                     </div>
                                                     {s.accuracy !== undefined && (
