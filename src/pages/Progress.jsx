@@ -191,12 +191,13 @@ function Progress() {
       const match = sessions.find(s => s.documentName === found.documentName)
       
       if (match) {
+        if (match.documentName === getActiveContextName()) return
         await restoreSession(match.id)
-        window.location.reload() // Full sync
+        window.location.href = '/progress' 
       } else {
-        // Fallback: manually set active context if no session found
+        if (found.documentName === getActiveContextName()) return
         setActiveContext(found.documentName)
-        window.location.reload() // Full sync
+        window.location.href = '/progress'
       }
     } catch (err) {
       console.error('Switch context error:', err)

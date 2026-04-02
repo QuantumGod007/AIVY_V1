@@ -105,11 +105,14 @@ function Flashcards() {
 
     const sessionRestore = async (id) => {
         try {
+            if (id === 'current' || id === activeQuiz?.id) {
+                setShowTopicList(false)
+                return
+            }
             setIsSwitching(true)
             setShowTopicList(false)
             await restoreSession(id)
-            // Reload window to re-trigger context init for simple integration
-            window.location.reload()
+            window.location.href = '/flashcards'
         } catch (err) {
             console.error('Switch context error:', err)
         } finally {

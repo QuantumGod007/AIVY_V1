@@ -74,10 +74,20 @@ function Sidebar() {
 
     const handleSwitch = async (id) => {
         try {
+            // Check if already active
+            const session = allSessions.find(s => s.id === id)
+            if (session && session.documentName === activeContext) {
+                setShowMenu(false)
+                return
+            }
+
             setIsSwitching(true)
             setShowMenu(false)
             await restoreSession(id)
-            window.location.reload()
+            
+            // Navigate to dashboard for full context refresh if we are switching
+            // This is safer than just reloading on some pages
+            window.location.href = '/dashboard' 
         } catch (err) {
             console.error('Sidebar switch err:', err)
         } finally {
