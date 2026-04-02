@@ -1,11 +1,12 @@
 import { useState, useEffect, useRef } from 'react'
 import Sidebar from '../components/Sidebar'
-import { getCurrentQuiz } from '../services/storageService'
+import { getCurrentQuiz, getArchivedSessions, restoreSession } from '../services/storageService'
 import { generateStudyPlan } from '../services/geminiService'
 import { saveStudyPlan, getStudyPlan, saveCompletedDays } from '../services/firestoreService'
 import {
     CalendarDays, Loader2, ChevronDown, ChevronUp,
-    CheckCircle2, BookOpen, Cloud, CloudOff, Check
+    CheckCircle2, BookOpen, Cloud, CloudOff, Check,
+    Search, ChevronRight, FileText, RefreshCw
 } from 'lucide-react'
 
 // Sync status badge
@@ -41,6 +42,9 @@ function StudyPlanner() {
     const [expandedDay, setExpandedDay] = useState(0)
     const [completedDays, setCompletedDays] = useState([])
     const [syncStatus, setSyncStatus] = useState('local') // 'saving' | 'saved' | 'local'
+    const [allSessions, setAllSessions] = useState([])
+    const [isSwitching, setIsSwitching] = useState(false)
+    const [showTopicList, setShowTopicList] = useState(false)
 
     useEffect(() => {
         const init = async () => {
@@ -54,14 +58,32 @@ function StudyPlanner() {
                     setSubject(prev => prev || quiz.documentName?.replace(/\.[^.]+$/, '') || '')
                 }
 
-                // 2. Load plan from Firestore (or localStorage fallback)
-                const cloud = await getStudyPlan()
+                // 2. Load all available sessions for switcher
+                const sessions = await getArchivedSessions()
+                // Deduplicate by name
+                const unique = []
+                const names = new Set()
+                sessions.forEach(s => {
+                    if (!names.has(s.documentName)) {
+                        names.add(s.documentName)
+                        unique.push(s)
+                    }
+                })
+                setAllSessions(unique)
+
+                // 3. Load plan from Firestore specifically for THIS document
+                const cloud = await getStudyPlan(quiz?.documentName || 'Your Document')
                 if (cloud?.plan) {
                     setPlan(cloud.plan)
                     setCompletedDays(cloud.completedDays || [])
                     if (cloud.subject) setSubject(cloud.subject)
                     if (cloud.examDate) setExamDate(cloud.examDate)
                     setSyncStatus('saved')
+                } else {
+                    // Reset if no plan for this context yet
+                    setPlan(null)
+                    setCompletedDays([])
+                    setSyncStatus('local')
                 }
             } catch (err) {
                 console.warn('StudyPlanner init:', err.message)
@@ -87,9 +109,9 @@ function StudyPlanner() {
             const generatedPlan = await generateStudyPlan(docText, subject, examDate, learnerLevel)
             setPlan(generatedPlan)
             setCompletedDays([])
-            // Save to cloud
+            // Save to cloud with document context
             setSyncStatus('saving')
-            const ok = await saveStudyPlan(generatedPlan, subject, examDate)
+            const ok = await saveStudyPlan(generatedPlan, subject, examDate, quiz?.documentName || 'Document')
             setSyncStatus(ok ? 'saved' : 'local')
         } catch (err) {
             setError('Failed to generate plan. Please try again.')
@@ -105,8 +127,40 @@ function StudyPlanner() {
             : [...completedDays, dayIndex]
         setCompletedDays(updated)
         setSyncStatus('saving')
-        const ok = await saveCompletedDays(updated)
+        const quiz = await getCurrentQuiz()
+        const ok = await saveCompletedDays(updated, quiz?.documentName || 'Document')
         setSyncStatus(ok ? 'saved' : 'local')
+    }
+
+    const handleContextSwitch = async (session) => {
+        try {
+            setIsSwitching(true)
+            setShowTopicList(false)
+            await restoreSession(session.id)
+            
+            // Reload page data
+            setDocumentLoaded(true)
+            setDocumentName(session.documentName)
+            setSubject(session.documentName.replace(/\.[^.]+$/, ''))
+            setPlan(null)
+            
+            const cloud = await getStudyPlan(session.documentName)
+            if (cloud?.plan) {
+                setPlan(cloud.plan)
+                setCompletedDays(cloud.completedDays || [])
+                if (cloud.subject) setSubject(cloud.subject)
+                if (cloud.examDate) setExamDate(cloud.examDate)
+                setSyncStatus('saved')
+            } else {
+                setPlan(null)
+                setCompletedDays([])
+                setSyncStatus('local')
+            }
+        } catch (err) {
+            console.error('Switch context error:', err)
+        } finally {
+            setIsSwitching(false)
+        }
     }
 
     const daysRemaining = examDate
@@ -128,9 +182,63 @@ function StudyPlanner() {
                 {/* Config Card */}
                 <div className="planner-config-card">
                     {documentLoaded && (
-                        <div className="planner-doc-badge">
-                            <BookOpen size={14} />
-                            <span>Using: {documentName}</span>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1.25rem' }}>
+                            <div className="planner-doc-badge" style={{ marginBottom: 0 }}>
+                                <BookOpen size={14} />
+                                <span>Using: {documentName}</span>
+                            </div>
+                            
+                            <div style={{ position: 'relative' }}>
+                                <button 
+                                    className="btn btn-secondary btn-icon" 
+                                    style={{ padding: '0.4rem 0.75rem', fontSize: '0.75rem', height: 'auto' }}
+                                    onClick={() => setShowTopicList(!showTopicList)}
+                                    disabled={isSwitching}
+                                >
+                                    {isSwitching ? <Loader2 size={12} className="processing-spinner" /> : <RefreshCw size={12} />}
+                                    Switch Topic
+                                </button>
+
+                                {showTopicList && (
+                                    <div style={{
+                                        position: 'absolute', top: '110%', left: 0, zIndex: 100,
+                                        width: '280px', background: 'var(--color-bg-elevated)',
+                                        border: '1px solid var(--color-border)', borderRadius: '12px',
+                                        boxShadow: '0 10px 25px -5px rgba(0,0,0,0.1)', overflow: 'hidden'
+                                    }}>
+                                        <div style={{ padding: '0.75rem', fontSize: '0.75rem', fontWeight: 700, borderBottom: '1px solid var(--color-border)', color: 'var(--color-text-muted)' }}>
+                                            Select Previous Content
+                                        </div>
+                                        <div style={{ maxHeight: '300px', overflowY: 'auto' }}>
+                                            {allSessions.length === 0 ? (
+                                                <div style={{ padding: '1rem', textAlign: 'center', fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>No other topics found</div>
+                                            ) : (
+                                                allSessions.map(s => (
+                                                    <button
+                                                        key={s.id}
+                                                        onClick={() => handleContextSwitch(s)}
+                                                        style={{
+                                                            width: '100%', padding: '0.75rem 1rem', border: 'none',
+                                                            background: s.documentName === documentName ? 'rgba(124, 58, 237, 0.05)' : 'transparent',
+                                                            display: 'flex', alignItems: 'center', gap: '0.75rem',
+                                                            cursor: 'pointer', textAlign: 'left', transition: 'all 0.2s'
+                                                        }}
+                                                        onMouseEnter={e => e.currentTarget.style.background = 'rgba(124, 58, 237, 0.05)'}
+                                                        onMouseLeave={e => e.currentTarget.style.background = s.documentName === documentName ? 'rgba(124, 58, 237, 0.05)' : 'transparent'}
+                                                    >
+                                                        <FileText size={14} color={s.documentName === documentName ? 'var(--color-accent)' : 'var(--color-text-muted)'} />
+                                                        <div style={{ flex: 1, overflow: 'hidden' }}>
+                                                            <div style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--color-text-primary)', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>{s.documentName}</div>
+                                                            <div style={{ fontSize: '0.65rem', color: 'var(--color-text-muted)' }}>{s.accuracy}% accuracy • {new Date(s.archivedAt || s.completedAt).toLocaleDateString()}</div>
+                                                        </div>
+                                                        <ChevronRight size={14} color="var(--color-text-muted)" />
+                                                    </button>
+                                                ))
+                                            )}
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
                         </div>
                     )}
 

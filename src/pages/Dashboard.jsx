@@ -9,7 +9,7 @@ import { initializeUserStats } from '../services/gamificationService'
 import Gamification from '../components/Gamification'
 import Sidebar from '../components/Sidebar'
 import GamificationSummary from '../components/GamificationSummary'
-import { getArchivedSessions, restoreSession } from '../services/storageService'
+import { getArchivedSessions, restoreSession, getActiveContextName } from '../services/storageService'
 import {
   Upload,
   FileText,
@@ -40,7 +40,8 @@ import {
   Trophy,
   Camera,
   History,
-  ChevronLeft
+  ChevronLeft,
+  ChevronDown
 } from 'lucide-react'
 
 // Dashboard States
@@ -64,6 +65,8 @@ function Dashboard() {
   const [recentSessions, setRecentSessions] = useState([])
   const [inputMode, setInputMode] = useState('upload') // 'upload' | 'paste'
   const [pastedText, setPastedText] = useState('')
+  const [allSessions, setAllSessions] = useState([])
+  const [showSwitcher, setShowSwitcher] = useState(false)
 
   const navigate = useNavigate()
   const user = auth.currentUser
@@ -124,11 +127,34 @@ function Dashboard() {
       } catch (error) {
         console.error('Error loading dashboard:', error)
       } finally {
+        // Load sessions for switcher
+        getArchivedSessions().then(sessions => {
+          const unique = []
+          const names = new Set()
+          sessions.forEach(s => {
+            if (!names.has(s.documentName)) {
+              names.add(s.documentName); unique.push(s)
+            }
+          })
+          setAllSessions(unique)
+        })
         setIsLoading(false)
       }
     })
     return () => unsub()
   }, [])
+
+  const handleRestoreSession = async (id) => {
+    try {
+      setIsProcessing(true)
+      await restoreSession(id)
+      window.location.reload()
+    } catch (err) {
+      console.error('Session restore err:', err)
+    } finally {
+      setIsProcessing(false)
+    }
+  }
 
   const handleLogout = async () => {
     try {
@@ -652,9 +678,53 @@ function Dashboard() {
             )}
 
             {!isState(DASHBOARD_STATES.NO_DOCUMENT) && (
-              <button className="db-new-session-btn" onClick={handleStartNewDocument} disabled={isProcessing}>
-                <RefreshCw size={13}/>New Document
-              </button>
+              <div style={{ marginTop: '1.25rem', display: 'flex', justifyContent: 'center', gap: '0.75rem', position: 'relative' }}>
+                <button className="db-new-session-btn" onClick={handleStartNewDocument} disabled={isProcessing}>
+                  <RefreshCw size={13} /> New Document
+                </button>
+                
+                <button 
+                  className="db-new-session-btn" 
+                  onClick={() => setShowSwitcher(!showSwitcher)}
+                  style={{ background: 'transparent', border: '1px solid var(--color-border)', width: 'auto', padding: '0 1rem' }}
+                  disabled={isProcessing}
+                >
+                  <History size={13} /> Switch Topic
+                </button>
+
+                {showSwitcher && (
+                  <div style={{
+                    position: 'absolute', top: '110%', left: '50%', transform: 'translateX(-50%)',
+                    width: '260px', background: 'var(--color-bg-elevated)', border: '1px solid var(--color-border)',
+                    borderRadius: '12px', boxShadow: '0 10px 30px -5px rgba(0,0,0,0.3)', zIndex: 1000,
+                    overflow: 'hidden'
+                  }}>
+                    <div style={{ padding: '0.75rem', fontSize: '0.625rem', fontWeight: 800, color: 'var(--color-text-muted)', borderBottom: '1px solid var(--color-border)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Recent Study Contexts</div>
+                    <div style={{ maxHeight: '220px', overflowY: 'auto' }}>
+                      {allSessions.length === 0 ? (
+                        <div style={{ padding: '1rem', textAlign: 'center', fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>No previous documents</div>
+                      ) : (
+                        allSessions.map(session => (
+                          <button
+                            key={session.id}
+                            onClick={() => handleRestoreSession(session.id)}
+                            style={{
+                              width: '100%', padding: '0.75rem 1rem', border: 'none', background: 'transparent',
+                              display: 'flex', alignItems: 'center', gap: '0.75rem', cursor: 'pointer', textAlign: 'left',
+                              transition: 'background 0.2s', borderBottom: '1px solid rgba(255,255,255,0.02)'
+                            }}
+                            onMouseEnter={e => e.currentTarget.style.background = 'rgba(124, 58, 237, 0.05)'}
+                            onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                          >
+                            <BookOpen size={13} color="var(--color-accent)" />
+                            <span style={{ fontSize: '0.78rem', color: 'var(--color-text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{session.documentName}</span>
+                          </button>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
             )}
           </div>
 
@@ -752,8 +822,8 @@ function Dashboard() {
             </div>
           )}
 
-          {/* Recent Sessions Quick Access */}
-          {recentSessions.length > 0 && isState(DASHBOARD_STATES.NO_DOCUMENT) && (
+          {/* Intelligence Hub / Recent Sessions Quick Access */}
+          {allSessions.length > 0 && (
             <div style={{
               background: 'var(--color-bg-card)',
               border: '1px solid var(--color-border)',
@@ -761,16 +831,17 @@ function Dashboard() {
               padding: '1.25rem',
               backdropFilter: 'blur(12px)',
               boxShadow: 'var(--shadow-md)',
+              marginTop: '1.5rem'
             }}>
               {/* Header */}
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                   <History size={16} style={{ color: 'var(--color-accent)' }} />
                   <h3 style={{ margin: 0, fontSize: '0.9rem', fontWeight: 700, color: 'var(--color-text-primary)', letterSpacing: '-0.01em' }}>
-                    Recent Sessions
+                    Intelligence Hub
                   </h3>
                 </div>
-                <Link to="/sessions" style={{
+                <Link to="/progress" style={{
                   fontSize: '0.75rem',
                   color: 'var(--color-accent)',
                   textDecoration: 'none',
@@ -781,98 +852,59 @@ function Dashboard() {
                 </Link>
               </div>
 
-              {/* Session cards */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                {recentSessions.map(session => {
-                  const rawDate = session.archivedAt
-                    ? (session.archivedAt.toDate ? session.archivedAt.toDate() : new Date(session.archivedAt))
-                    : null;
-                  const dateStr = rawDate
-                    ? rawDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
-                    : 'Recently';
-                  const isComplete = !session.isPrerequisiteSurvey && session.completedAt;
-                  const docName = session.documentName || 'Untitled';
-                  const shortName = docName.length > 28 ? docName.substring(0, 28) + '…' : docName;
-
+              {/* List */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                {allSessions.slice(0, 3).map((session, i) => {
+                  const isActive = session.documentName === getActiveContextName()
                   return (
-                    <div
+                    <button
                       key={session.id}
-                      onClick={() => handleRestore(session.id)}
+                      onClick={() => handleRestoreSession(session.id)}
                       style={{
                         display: 'flex',
                         alignItems: 'center',
-                        gap: '0.875rem',
-                        padding: '0.75rem 0.875rem',
-                        background: 'var(--color-bg-elevated)',
-                        border: '1px solid var(--color-border)',
-                        borderRadius: '12px',
+                        justifyContent: 'space-between',
+                        gap: '1rem',
+                        padding: '0.875rem',
+                        background: 'var(--color-bg-secondary)',
+                        border: isActive ? '1px solid var(--color-accent)' : '1px solid var(--color-border)',
+                        borderRadius: '14px',
                         cursor: 'pointer',
-                        transition: 'all 0.2s ease',
+                        transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
+                        textAlign: 'left'
                       }}
-                      onMouseEnter={e => {
-                        e.currentTarget.style.borderColor = 'var(--color-accent)';
-                        e.currentTarget.style.background = 'rgba(99,102,241,0.05)';
-                        e.currentTarget.style.transform = 'translateX(3px)';
-                      }}
-                      onMouseLeave={e => {
-                        e.currentTarget.style.borderColor = 'var(--color-border)';
-                        e.currentTarget.style.background = 'var(--color-bg-elevated)';
-                        e.currentTarget.style.transform = 'translateX(0)';
-                      }}
+                      onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.borderColor = 'var(--color-accent)'; }}
+                      onMouseLeave={e => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.borderColor = isActive ? 'var(--color-accent)' : 'var(--color-border)'; }}
                     >
-                      {/* File icon */}
-                      <div style={{
-                        width: 36, height: 36, flexShrink: 0,
-                        borderRadius: '9px',
-                        background: 'rgba(99,102,241,0.1)',
-                        color: 'var(--color-accent)',
-                        display: 'flex', alignItems: 'center', justifyContent: 'center'
-                      }}>
-                        <FileText size={16} />
-                      </div>
-
-                      {/* Info */}
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{
-                          fontSize: '0.8375rem',
-                          fontWeight: 600,
-                          color: 'var(--color-text-primary)',
-                          whiteSpace: 'nowrap',
-                          overflow: 'hidden',
-                          textOverflow: 'ellipsis',
-                          marginBottom: '0.2rem'
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', overflow: 'hidden', flex: 1 }}>
+                        <div style={{ 
+                          width: 32, height: 32, borderRadius: '8px', flexShrink: 0,
+                          background: isActive ? 'var(--color-accent)' : 'var(--color-bg-elevated)', 
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          color: isActive ? '#fff' : 'var(--color-text-muted)' 
                         }}>
-                          {shortName}
+                          <BookOpen size={16} />
                         </div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                          <span style={{ fontSize: '0.7rem', color: 'var(--color-text-muted)' }}>
-                            {dateStr}
-                          </span>
-                          <span style={{
-                            fontSize: '0.65rem',
-                            fontWeight: 600,
-                            textTransform: 'uppercase',
-                            letterSpacing: '0.04em',
-                            padding: '2px 7px',
-                            borderRadius: '5px',
-                            background: isComplete ? 'rgba(16,185,129,0.12)' : 'rgba(245,158,11,0.12)',
-                            color: isComplete ? '#10b981' : '#f59e0b',
-                            border: `1px solid ${isComplete ? 'rgba(16,185,129,0.25)' : 'rgba(245,158,11,0.25)'}`,
-                          }}>
-                            {isComplete ? 'Done' : 'Resume'}
-                          </span>
+                        <div style={{ overflow: 'hidden' }}>
+                          <div style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--color-text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                            {session.documentName}
+                          </div>
+                          <div style={{ fontSize: '0.65rem', color: 'var(--color-text-muted)', marginTop: '0.1rem', display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+                            <History size={10} /> 
+                            {new Date(session.updatedAt || session.id).toLocaleDateString([], { month: 'short', day: 'numeric' })}
+                            {isActive && <span style={{ color: 'var(--color-accent)', fontWeight: 800, marginLeft: '0.3rem' }}>· ACTIVE</span>}
+                          </div>
                         </div>
                       </div>
-
-                      {/* Chevron */}
-                      <ChevronLeft size={14} style={{
-                        transform: 'rotate(180deg)',
-                        color: 'var(--color-text-muted)',
-                        opacity: 0.5,
-                        flexShrink: 0
-                      }} />
-                    </div>
-                  );
+                      
+                      <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                        <div style={{ fontSize: '0.85rem', fontWeight: 800, color: 'var(--color-text-primary)' }}>
+                          {session.lastStats?.accuracy || 0}%
+                        </div>
+                        <div style={{ fontSize: '0.6rem', color: 'var(--color-text-muted)', textTransform: 'uppercase', fontWeight: 600 }}>Accuracy</div>
+                      </div>
+                    </button>
+                  )
                 })}
               </div>
             </div>

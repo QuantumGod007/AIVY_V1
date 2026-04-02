@@ -42,6 +42,14 @@ function safeLocalSet(key, value) {
     try { localStorage.setItem(key, JSON.stringify(value)) } catch { /* quota */ }
 }
 
+/**
+ * Generate a safe ID for Firestore paths from a document name.
+ */
+function getContextId(docName) {
+    if (!docName) return 'default'
+    return docName.replace(/[^a-zA-Z0-9]/g, '_').substring(0, 100)
+}
+
 // ─── User Profile ──────────────────────────────────────────────────────────────
 
 /**
@@ -72,42 +80,47 @@ export async function ensureUserProfile(displayName) {
 /**
  * Save generated study plan to Firestore + localStorage cache.
  */
-export async function saveStudyPlan(plan, subject, examDate) {
+export async function saveStudyPlan(plan, subject, examDate, docName) {
     // Always update local cache immediately (optimistic)
-    safeLocalSet('studyPlan', plan)
-    safeLocalSet('studyPlanMeta', { subject, examDate })
+    const cacheKey = `studyPlan_${getContextId(docName)}`
+    safeLocalSet(cacheKey, plan)
+    safeLocalSet(`${cacheKey}_meta`, { subject, examDate })
 
     try {
         const uid = getUserId()
-        const ref = doc(db, 'users', uid, 'studyPlans', 'current')
+        const contextId = getContextId(docName)
+        const ref = doc(db, 'users', uid, 'contexts', contextId)
+        
         await setDoc(ref, {
-            plan,
-            subject,
-            examDate,
-            completedDays: [],
-            updatedAt: serverTimestamp()
-        })
+            studyPlan: {
+                plan,
+                subject,
+                examDate,
+                completedDays: [],
+                updatedAt: serverTimestamp()
+            }
+        }, { merge: true })
         return true
     } catch (err) {
-        console.warn('saveStudyPlan Firestore error (local cache used):', err.message)
+        console.warn('saveStudyPlan Firestore error:', err.message)
         return false
     }
 }
 
 /**
- * Load study plan from Firestore; fall back to localStorage.
- * Returns { plan, subject, examDate, completedDays } or null.
+ * Load study plan from Firestore for a specific document context.
  */
-export async function getStudyPlan() {
+export async function getStudyPlan(docName) {
     try {
         const uid = getUserId()
-        const ref = doc(db, 'users', uid, 'studyPlans', 'current')
+        const contextId = getContextId(docName)
+        const ref = doc(db, 'users', uid, 'contexts', contextId)
         const snap = await getDoc(ref)
-        if (snap.exists()) {
-            const data = snap.data()
-            // Sync local cache
-            if (data.plan) safeLocalSet('studyPlan', data.plan)
-            if (data.completedDays) safeLocalSet('studyPlanCompleted', data.completedDays)
+        
+        if (snap.exists() && snap.data().studyPlan) {
+            const data = snap.data().studyPlan
+            const cacheKey = `studyPlan_${contextId}`
+            safeLocalSet(cacheKey, data.plan)
             return {
                 plan: data.plan || null,
                 subject: data.subject || '',
@@ -116,29 +129,31 @@ export async function getStudyPlan() {
             }
         }
     } catch (err) {
-        console.warn('getStudyPlan Firestore error — falling back to localStorage:', err.message)
+        console.warn('getStudyPlan Firestore error:', err.message)
     }
 
-    // Offline fallback
-    const plan = safeLocalGet('studyPlan')
-    const meta = safeLocalGet('studyPlanMeta') || {}
-    const completedDays = safeLocalGet('studyPlanCompleted') || []
-    if (plan) return { plan, subject: meta.subject || '', examDate: meta.examDate || '', completedDays }
+    // Local fallback
+    const cacheKey = `studyPlan_${getContextId(docName)}`
+    const plan = safeLocalGet(cacheKey)
+    const meta = safeLocalGet(`${cacheKey}_meta`) || {}
+    if (plan) return { plan, subject: meta.subject || '', examDate: meta.examDate || '', completedDays: [] }
     return null
 }
 
 /**
- * Update only the completedDays field (called when user ticks a day).
+ * Update completed days for a specific context.
  */
-export async function saveCompletedDays(days) {
-    safeLocalSet('studyPlanCompleted', days)
+export async function saveCompletedDays(days, docName) {
     try {
         const uid = getUserId()
-        const ref = doc(db, 'users', uid, 'studyPlans', 'current')
-        await updateDoc(ref, { completedDays: days, updatedAt: serverTimestamp() })
+        const contextId = getContextId(docName)
+        const ref = doc(db, 'users', uid, 'contexts', contextId)
+        await setDoc(ref, { 
+            studyPlan: { completedDays: days, updatedAt: serverTimestamp() } 
+        }, { merge: true })
         return true
     } catch (err) {
-        console.warn('saveCompletedDays Firestore error:', err.message)
+        console.warn('saveCompletedDays error:', err.message)
         return false
     }
 }
@@ -146,50 +161,50 @@ export async function saveCompletedDays(days) {
 // ─── Flashcards ────────────────────────────────────────────────────────────────
 
 /**
- * Save flashcard set to Firestore + localStorage cache.
+ * Save flashcard set to a specific document context.
  */
-export async function saveFlashcards(cards, topic) {
-    safeLocalSet('flashcards', cards)
-    safeLocalSet('flashcardTopic', topic)
+export async function saveFlashcards(cards, topic, docName) {
+    const contextId = getContextId(docName)
+    safeLocalSet(`flashcards_${contextId}`, cards)
 
     try {
         const uid = getUserId()
-        const ref = doc(db, 'users', uid, 'flashcards', 'current')
+        const ref = doc(db, 'users', uid, 'contexts', contextId)
         await setDoc(ref, {
-            cards,
-            topic: topic || '',
-            updatedAt: serverTimestamp()
-        })
+            flashcards: {
+                cards,
+                topic: topic || '',
+                updatedAt: serverTimestamp()
+            }
+        }, { merge: true })
         return true
     } catch (err) {
-        console.warn('saveFlashcards Firestore error (local cache used):', err.message)
+        console.warn('saveFlashcards Firestore error:', err.message)
         return false
     }
 }
 
 /**
- * Load flashcards from Firestore; fall back to localStorage.
- * Returns { cards, topic } or null.
+ * Load flashcards for a specific document context.
  */
-export async function getFlashcards() {
+export async function getFlashcards(docName) {
     try {
         const uid = getUserId()
-        const ref = doc(db, 'users', uid, 'flashcards', 'current')
+        const contextId = getContextId(docName)
+        const ref = doc(db, 'users', uid, 'contexts', contextId)
         const snap = await getDoc(ref)
-        if (snap.exists()) {
-            const data = snap.data()
-            if (data.cards?.length) {
-                safeLocalSet('flashcards', data.cards)
-                safeLocalSet('flashcardTopic', data.topic || '')
-                return { cards: data.cards, topic: data.topic || '' }
-            }
+        
+        if (snap.exists() && snap.data().flashcards) {
+            const data = snap.data().flashcards
+            safeLocalSet(`flashcards_${contextId}`, data.cards)
+            return { cards: data.cards, topic: data.topic || '' }
         }
     } catch (err) {
-        console.warn('getFlashcards Firestore error — falling back to localStorage:', err.message)
+        console.warn('getFlashcards Firestore error:', err.message)
     }
 
-    const cards = safeLocalGet('flashcards')
-    const topic = safeLocalGet('flashcardTopic') || ''
-    if (cards?.length) return { cards, topic }
+    const contextId = getContextId(docName)
+    const cards = safeLocalGet(`flashcards_${contextId}`)
+    if (cards?.length) return { cards, topic: '' }
     return null
 }

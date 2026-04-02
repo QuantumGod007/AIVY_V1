@@ -2,41 +2,18 @@ import { useState, useEffect, useRef } from 'react'
 import Sidebar from '../components/Sidebar'
 import { getCurrentQuiz } from '../services/storageService'
 import { generateTutorResponse } from '../services/geminiService'
-import { MessageSquare, Send, Loader2, RotateCcw, BookOpen, Brain } from 'lucide-react'
+import { 
+    MessageSquare, Send, Loader2, RotateCcw, 
+    BookOpen, Brain, RefreshCw, FileText,
+    ChevronRight, ChevronDown, ChevronUp
+} from 'lucide-react'
 import { auth } from '../firebase'
 import { addXP } from '../services/gamificationService'
 import { db } from '../firebase'
 import { doc, setDoc, getDoc, serverTimestamp } from 'firebase/firestore'
 import { onAuthStateChanged } from 'firebase/auth'
 
-// Persist chat history to Firestore so it survives page refresh
-async function saveChatHistory(messages) {
-    try {
-        const user = auth.currentUser
-        if (!user) return
-        const ref = doc(db, 'users', user.uid, 'tutor', 'history')
-        // Store last 50 messages only
-        await setDoc(ref, {
-            messages: messages.slice(-50),
-            updatedAt: serverTimestamp()
-        }, { merge: true })
-    } catch (err) {
-        console.warn('saveChatHistory:', err.message)
-    }
-}
-
-async function loadChatHistory() {
-    try {
-        const user = auth.currentUser
-        if (!user) return null
-        const ref = doc(db, 'users', user.uid, 'tutor', 'history')
-        const snap = await getDoc(ref)
-        if (snap.exists()) return snap.data().messages || null
-    } catch (err) {
-        console.warn('loadChatHistory:', err.message)
-    }
-    return null
-}
+// Removed singleton functions for document-specific ones inside component
 
 const WELCOME_MSG = {
     role: 'ai',
@@ -51,33 +28,61 @@ function AiTutor() {
     const [initializing, setInitializing] = useState(true)
     const [documentContext, setDocumentContext] = useState('')
     const [documentName, setDocumentName] = useState('')
+    const [allSessions, setAllSessions] = useState([])
+    const [showTopicList, setShowTopicList] = useState(false)
     const bottomRef = useRef(null)
     const inputRef = useRef(null)
     const saveTimerRef = useRef(null)
 
+    const getContextId = (name) => name ? name.replace(/[^a-zA-Z0-9]/g, '_').substring(0, 100) : 'default'
+
+    const sessionRestore = async (id) => {
+        const { restoreSession } = await import('../services/storageService')
+        await restoreSession(id)
+        window.location.reload()
+    }
+
     useEffect(() => {
-        // Wait for Firebase auth to resolve before loading any cloud data
-        const unsub = onAuthStateChanged(auth, async (user) => {
-            if (!user) {
+        const unsub = onAuthStateChanged(auth, async (u) => {
+            if (!u) {
                 setInitializing(false)
                 return
             }
-            setInitializing(true)
+            
             try {
-                // Load document context
+                // 1. Get current document context
                 const quiz = await getCurrentQuiz()
+                let currentDocName = 'General'
                 if (quiz?.documentText) {
                     setDocumentContext(quiz.documentText)
-                    setDocumentName(quiz.documentName || 'Your Document')
+                    setDocumentName(quiz.documentName || 'General')
+                    currentDocName = quiz.documentName || 'General'
                 }
 
-                // Load persisted chat history
-                const history = await loadChatHistory()
-                if (history && history.length > 0) {
-                    setMessages(history)
+                // 2. Load context-specific history from cloud
+                const ctxId = getContextId(currentDocName)
+                const ref = doc(db, 'users', u.uid, 'contexts', ctxId)
+                const snap = await getDoc(ref)
+                if (snap.exists() && snap.data().tutorHistory) {
+                    setMessages(snap.data().tutorHistory)
+                } else {
+                    setMessages([WELCOME_MSG])
                 }
+
+                // 3. Keep list of topics for switcher
+                const { getArchivedSessions } = await import('../services/storageService')
+                const sessions = await getArchivedSessions()
+                const unique = []
+                const names = new Set()
+                sessions.forEach(s => {
+                    if (!names.has(s.documentName)) {
+                        names.add(s.documentName); unique.push(s)
+                    }
+                })
+                setAllSessions(unique)
+
             } catch (err) {
-                console.warn('AiTutor init:', err.message)
+                console.warn('Tutor Init Error:', err)
             } finally {
                 setInitializing(false)
             }
@@ -89,10 +94,20 @@ function AiTutor() {
         bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
     }, [messages])
 
-    // Debounced save to Firestore
+    // Debounced save to Firestore (per context)
     const debouncedSave = (msgs) => {
+        if (!documentName) return
         clearTimeout(saveTimerRef.current)
-        saveTimerRef.current = setTimeout(() => saveChatHistory(msgs), 1500)
+        saveTimerRef.current = setTimeout(async () => {
+            const user = auth.currentUser
+            if (!user) return
+            const ctxId = getContextId(documentName)
+            const ref = doc(db, 'users', user.uid, 'contexts', ctxId)
+            await setDoc(ref, { 
+                tutorHistory: msgs.slice(-50), 
+                updatedAt: serverTimestamp() 
+            }, { merge: true })
+        }, 1500)
     }
 
     const sendMessage = async () => {
@@ -135,7 +150,7 @@ function AiTutor() {
     const clearChat = async () => {
         const fresh = [WELCOME_MSG]
         setMessages(fresh)
-        await saveChatHistory(fresh)
+        debouncedSave(fresh)
     }
 
     const SUGGESTED = documentContext
@@ -156,18 +171,53 @@ function AiTutor() {
                         </p>
                     </div>
                     <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
-                        {documentContext && (
-                            <div style={{
-                                display: 'flex', alignItems: 'center', gap: '0.4rem',
-                                fontSize: '0.72rem', fontWeight: 600, padding: '0.25rem 0.65rem',
-                                borderRadius: '100px', background: '#7c3aed18',
-                                border: '1px solid #7c3aed44', color: '#a78bfa'
-                            }}>
-                                <BookOpen size={12} /> Document Loaded
-                            </div>
-                        )}
-                        <button className="btn btn-secondary btn-icon" onClick={clearChat}>
-                            <RotateCcw size={16} /> Clear Chat
+                        <div style={{ position: 'relative' }}>
+                            <button 
+                                className="btn btn-secondary btn-icon"
+                                onClick={() => setShowTopicList(!showTopicList)}
+                                style={{ borderRadius: '10px', fontSize: '0.72rem', height: 'auto', padding: '0.4rem 0.75rem' }}
+                            >
+                                <Brain size={13} /> Switch Topic
+                            </button>
+
+                            {showTopicList && (
+                                <div style={{
+                                    position: 'absolute', top: '110%', right: 0, zIndex: 1000,
+                                    width: '240px', background: 'var(--color-bg-elevated)',
+                                    border: '1px solid var(--color-border)', borderRadius: '10px',
+                                    boxShadow: '0 8px 20px -5px rgba(0,0,0,0.15)', overflow: 'hidden'
+                                }}>
+                                    <div style={{ padding: '0.6rem', fontSize: '0.65rem', fontWeight: 700, borderBottom: '1px solid var(--color-border)', color: 'var(--color-text-muted)' }}>
+                                        Recent Sessions
+                                    </div>
+                                    <div style={{ maxHeight: '250px', overflowY: 'auto' }}>
+                                        {allSessions.length === 0 ? (
+                                            <div style={{ padding: '1rem', textAlign: 'center', fontSize: '0.7rem', color: 'var(--color-text-muted)' }}>No sessions found</div>
+                                        ) : (
+                                            allSessions.map(s => (
+                                                <button
+                                                    key={s.id}
+                                                    onClick={() => sessionRestore(s.id)}
+                                                    style={{
+                                                        width: '100%', padding: '0.6rem 0.8rem', border: 'none',
+                                                        background: 'transparent', display: 'flex', alignItems: 'center', gap: '0.6rem',
+                                                        cursor: 'pointer', textAlign: 'left', transition: 'all 0.2s'
+                                                    }}
+                                                    onMouseEnter={e => e.currentTarget.style.background = 'rgba(124, 58, 237, 0.05)'}
+                                                    onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                                                >
+                                                    <BookOpen size={12} color="var(--color-text-muted)" />
+                                                    <span style={{ fontSize: '0.75rem', color: 'var(--color-text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{s.documentName}</span>
+                                                </button>
+                                            ))
+                                        )}
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+
+                        <button className="btn btn-secondary btn-icon" onClick={clearChat} style={{ fontSize: '0.72rem', height: 'auto', padding: '0.4rem 0.75rem' }}>
+                            <RotateCcw size={14} /> Clear Chat
                         </button>
                     </div>
                 </div>

@@ -1,23 +1,21 @@
-/**
- * geminiService.js — AIVY AI Engine
- *
- * Model Strategy (billing enabled, $300 free credits):
- *   All functions → gemini-2.5-pro
- *   - Best reasoning quality for educational content
- *   - 8192 max output tokens for rich responses
- *   - 30,000 char document context (vs old 5-8k)
- *   - Native multi-turn chat for AI Tutor
- *
- * JSON Parsing: Robust extraction handles markdown fences + thinking blocks
- */
-
+import { GoogleGenerativeAI } from '@google/generative-ai'
 
 // ─── Model Configuration ──────────────────────────────────────────────────────
-const MODEL_PRO   = 'gemini-2.5-pro'
-const MODEL_FLASH = 'gemini-2.5-flash'
+const MODEL_PRO   = 'gemini-1.5-pro'
+const MODEL_FLASH = 'gemini-1.5-flash'
 
 // Default model name
 const MODEL_NAME = MODEL_FLASH 
+
+/**
+ * Direct SDK Fallback (for local development when proxy is not available)
+ * Set VITE_GEMINI_API_KEY in .env to enable direct local access.
+ */
+function getLocalSDK() {
+    const key = import.meta.env.VITE_GEMINI_API_KEY
+    if (!key || key.includes('your_')) return null
+    return new GoogleGenerativeAI(key)
+}
 
 /**
  * Core Proxy Caller: Replaces direct SDK usage to hide API Keys.
@@ -42,23 +40,51 @@ export async function callGeminiProxy(prompt, options = {}) {
         }
     };
 
-    const response = await fetch('/api/generate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-    });
+    try {
+        const response = await fetch('/api/generate', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
 
-    if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.error?.message || `Proxy failed with status ${response.status}`);
+        if (response.status === 404 && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')) {
+            throw new Error('PROXY_NOT_FOUND');
+        }
+
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}));
+            throw new Error(errorData.error?.message || `Proxy failed with status ${response.status}`);
+        }
+
+        const data = await response.json();
+        if (data.error) throw new Error(data.error.message || 'Gemini API Error via Proxy');
+        return data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+        
+    } catch (err) {
+        if (err.message === 'PROXY_NOT_FOUND') {
+            const sdk = getLocalSDK()
+            if (!sdk) {
+                console.warn('API Proxy 404: No VITE_GEMINI_API_KEY found in .env. Please set it for local study.')
+                throw new Error('Local API proxy (Vercel) not running. Add VITE_GEMINI_API_KEY to your .env to study locally.')
+            }
+
+            // Direct local SDK call
+            try {
+                const genModel = sdk.getGenerativeModel({ model, generationConfig: payload.generationConfig });
+                const result   = await genModel.generateContent({ contents });
+                const data     = await result.response;
+                const text = data.text();
+                if (!text) throw new Error('Empty response from Gemini SDK');
+                return text;
+            } catch (sdkError) {
+                console.error('Direct SDK Failure:', sdkError);
+                throw new Error(`Gemini SDK Error: ${sdkError.message}. Make sure your API key in .env is valid and correct.`);
+            }
+        }
+
+        console.error('Gemini Service Failure:', err.message);
+        throw err;
     }
-
-    const data = await response.json();
-    if (data.error) {
-        throw new Error(data.error.message || 'Gemini API Error via Proxy');
-    }
-
-    return data.candidates?.[0]?.content?.parts?.[0]?.text || '';
 }
 
 // ─── JSON Parsing Helper ──────────────────────────────────────────────────────

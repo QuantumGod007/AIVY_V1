@@ -28,6 +28,19 @@ function getUserId() {
 }
 
 /**
+ * Global Active Context Management
+ * We use localStorage for the active context name so it's instant across tabs/refreshes.
+ */
+export function setActiveContext(docName) {
+    if (!docName) return
+    localStorage.setItem('aivy_active_context', docName)
+}
+
+export function getActiveContextName() {
+    return localStorage.getItem('aivy_active_context') || ''
+}
+
+/**
  * Firestore has a 1MB document limit.
  * Large PDFs can easily exceed this — truncate documentText to be safe.
  */
@@ -143,6 +156,7 @@ export async function saveCurrentQuiz(quiz) {
             ...safeTruncate(quiz),
             updatedAt: serverTimestamp()
         })
+        if (quiz.documentName) setActiveContext(quiz.documentName)
     } catch (error) {
         console.error('Error saving quiz:', error)
         throw error
@@ -160,6 +174,7 @@ export async function getCurrentQuiz() {
 
         if (quizSnap.exists()) {
             const data = quizSnap.data()
+            if (data.documentName) setActiveContext(data.documentName)
             return {
                 ...data,
                 updatedAt: data.updatedAt?.toDate?.()?.toISOString() || data.updatedAt
@@ -363,6 +378,7 @@ export async function restoreSession(sessionId) {
             completedAt: sessionData.completedAt
         })
 
+        setActiveContext(sessionData.documentName)
         return true
     } catch (error) {
         console.error('Error restoring session:', error)

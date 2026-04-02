@@ -20,9 +20,10 @@ function Leaderboard() {
         // Load current user stats
         getUserStats().then(setUserStats).catch(console.error)
         
-        // Load studied topics for the filter
+        // Load studied topics for the filter — deduplicate + normalize
         getQuizResults().then(results => {
-            const uniqueTopics = [...new Set(results.map(r => r.documentName))].filter(Boolean)
+            const rawTopics = results.map(r => (r.documentName || '').replace(/ — Recovery/g, ''))
+            const uniqueTopics = [...new Set(rawTopics)].filter(Boolean)
             setTopics(uniqueTopics)
             if (uniqueTopics.length > 0 && !selectedTopic) {
                 setSelectedTopic(uniqueTopics[0])

@@ -2,12 +2,13 @@ import { useState, useEffect } from 'react'
 import Sidebar from '../components/Sidebar'
 import { onAuthStateChanged } from 'firebase/auth'
 import { auth } from '../firebase'
-import { getCurrentQuiz } from '../services/storageService'
+import { getCurrentQuiz, getArchivedSessions, restoreSession } from '../services/storageService'
 import { generateFlashcards } from '../services/geminiService'
 import { saveFlashcards, getFlashcards } from '../services/firestoreService'
 import {
     Loader2, ChevronLeft, ChevronRight, RotateCcw,
-    Check, X, Sparkles, Cloud, CloudOff
+    Check, X, Sparkles, Cloud, CloudOff, Brain,
+    BookOpen, RefreshCw, FileText
 } from 'lucide-react'
 
 // Sync status pill
@@ -44,6 +45,9 @@ function Flashcards() {
     const [documentLoaded, setDocumentLoaded] = useState(false)
     const [phase, setPhase] = useState('setup') // 'setup' | 'study'
     const [syncStatus, setSyncStatus] = useState('local')
+    const [allSessions, setAllSessions] = useState([])
+    const [showTopicList, setShowTopicList] = useState(false)
+    const [isSwitching, setIsSwitching] = useState(false)
 
     useEffect(() => {
         const unsubscribe = onAuthStateChanged(auth, async (user) => {
@@ -53,15 +57,34 @@ function Flashcards() {
                 const quiz = await getCurrentQuiz()
                 if (quiz?.documentText) {
                     setDocumentLoaded(true)
-                    setTopic(prev => prev || quiz.documentName?.replace(/\.[^.]+$/, '') || '')
+                    const docName = quiz.documentName || 'Your Document'
+                    setTopic(prev => prev || docName.replace(/\.[^.]+$/, '') || '')
+                    
+                    // Load cards specifically for THIS document
+                    const cloud = await getFlashcards(docName)
+                    if (cloud?.cards?.length) {
+                        setCards(cloud.cards)
+                        if (cloud.topic) setTopic(cloud.topic)
+                        setPhase('study')
+                        setSyncStatus('saved')
+                    } else {
+                        // Reset if no cards for this context yet
+                        setCards([])
+                        setPhase('setup')
+                    }
                 }
-                const cloud = await getFlashcards()
-                if (cloud?.cards?.length) {
-                    setCards(cloud.cards)
-                    if (cloud.topic) setTopic(cloud.topic)
-                    setPhase('study')
-                    setSyncStatus('saved')
-                }
+
+                // 2. Load all available sessions for switcher
+                const sessions = await getArchivedSessions()
+                const unique = []
+                const names = new Set()
+                sessions.forEach(s => {
+                    if (!names.has(s.documentName)) {
+                        names.add(s.documentName); unique.push(s)
+                    }
+                })
+                setAllSessions(unique)
+
             } catch (err) {
                 console.warn('Flashcards init:', err.message)
             } finally {
@@ -70,6 +93,20 @@ function Flashcards() {
         })
         return () => unsubscribe()
     }, [])
+
+    const sessionRestore = async (id) => {
+        try {
+            setIsSwitching(true)
+            setShowTopicList(false)
+            await restoreSession(id)
+            // Reload window to re-trigger context init for simple integration
+            window.location.reload()
+        } catch (err) {
+            console.error('Switch context error:', err)
+        } finally {
+            setIsSwitching(false)
+        }
+    }
 
     const activeCards = mode === 'review'
         ? cards.filter((_, i) => review.includes(i))
@@ -90,9 +127,9 @@ function Flashcards() {
             setKnown([])
             setReview([])
             setPhase('study')
-            // Save to cloud
+            // Save to cloud with document context
             setSyncStatus('saving')
-            const ok = await saveFlashcards(result, topic)
+            const ok = await saveFlashcards(result, topic, quiz?.documentName || 'Document')
             setSyncStatus(ok ? 'saved' : 'local')
         } catch {
             setError('Failed to generate flashcards. Please try again.')
@@ -145,6 +182,54 @@ function Flashcards() {
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
                         {phase === 'study' && <SyncPill status={syncStatus} />}
+                        
+                        <div style={{ position: 'relative' }}>
+                            <button 
+                                className="btn btn-secondary btn-icon"
+                                onClick={() => setShowTopicList(!showTopicList)}
+                                style={{ borderRadius: '10px', fontSize: '0.75rem', padding: '0.4rem 0.8rem' }}
+                                disabled={isSwitching}
+                            >
+                                {isSwitching ? <Loader2 size={13} className="processing-spinner" /> : <Brain size={13} />}
+                                Switch Topic
+                            </button>
+
+                            {showTopicList && (
+                                <div style={{
+                                    position: 'absolute', top: '110%', right: 0, zIndex: 1000,
+                                    width: '260px', background: 'var(--color-bg-elevated)',
+                                    border: '1px solid var(--color-border)', borderRadius: '12px',
+                                    boxShadow: '0 10px 25px -5px rgba(0,0,0,0.15)', overflow: 'hidden'
+                                }}>
+                                    <div style={{ padding: '0.75rem', fontSize: '0.7rem', fontWeight: 700, borderBottom: '1px solid var(--color-border)', color: 'var(--color-text-muted)', textTransform: 'uppercase' }}>
+                                        Study Contexts
+                                    </div>
+                                    <div style={{ maxHeight: '250px', overflowY: 'auto' }}>
+                                        {allSessions.length === 0 ? (
+                                            <div style={{ padding: '1rem', textAlign: 'center', fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>No sessions found</div>
+                                        ) : (
+                                            allSessions.map(s => (
+                                                <button
+                                                    key={s.id}
+                                                    onClick={() => sessionRestore(s.id)}
+                                                    style={{
+                                                        width: '100%', padding: '0.75rem 1rem', border: 'none',
+                                                        background: 'transparent', display: 'flex', alignItems: 'center', gap: '0.6rem',
+                                                        cursor: 'pointer', textAlign: 'left', transition: 'all 0.2s'
+                                                    }}
+                                                    onMouseEnter={e => e.currentTarget.style.background = 'rgba(124, 58, 237, 0.05)'}
+                                                    onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                                                >
+                                                    <BookOpen size={13} color="var(--color-text-muted)" />
+                                                    <span style={{ fontSize: '0.8rem', color: 'var(--color-text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{s.documentName}</span>
+                                                </button>
+                                            ))
+                                        )}
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+
                         {phase === 'study' && (
                             <>
                                 <button className="btn btn-secondary btn-icon" onClick={reset}>

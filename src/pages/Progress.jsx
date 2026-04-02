@@ -3,13 +3,17 @@ import { useNavigate, useLocation } from 'react-router-dom'
 import { onAuthStateChanged } from 'firebase/auth'
 import { auth } from '../firebase'
 import { analyzeQuizResults, generateRecoveryQuiz, generateSmartReStudyPath } from '../services/geminiService'
-import { saveCurrentQuiz, getQuizResults, getCurrentQuiz } from '../services/storageService'
 import {
   ArrowLeft, TrendingUp, Target, Award, AlertCircle,
   CheckCircle2, XCircle, BarChart3, Brain, RefreshCw,
   Zap, ChevronDown, ChevronUp, Lightbulb, BookOpen,
-  Loader2, Sparkles
+  Loader2, Sparkles, Volume2, CircleStop, Check
 } from 'lucide-react'
+import { 
+  saveCurrentQuiz, getQuizResults, getCurrentQuiz, 
+  restoreSession, getArchivedSessions, setActiveContext,
+  getActiveContextName 
+} from '../services/storageService'
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -117,6 +121,8 @@ function Progress() {
   const [allResults, setAllResults]         = useState([])
   const [selectedResultId, setSelectedResultId] = useState(null)
   const [error, setError]                   = useState('')
+  const [isSpeaking, setIsSpeaking]         = useState(false)
+  const synth = window.speechSynthesis
   const navigate = useNavigate()
   const location = useLocation()
 
@@ -135,10 +141,22 @@ function Progress() {
         // 2. Firestore results — show historical list and latest result
         try {
           const firestoreResults = await getQuizResults()
-          setAllResults(firestoreResults)
           
-          if (!data && firestoreResults.length > 0) {
-            data = firestoreResults[0] // Default to latest if no router state
+          // Deduplicate by documentName — keep only the LATEST attempt for each
+          const uniqueMap = {}
+          firestoreResults.forEach(r => {
+            // Normalize name: Remove " — Recovery" if present for unique grouping
+            const baseName = (r.documentName || 'Untitled Quiz').replace(/ — Recovery/g, '')
+            if (!uniqueMap[baseName]) {
+                uniqueMap[baseName] = { ...r, documentName: baseName } // Normalize for UI
+            }
+          })
+          const uniqueResults = Object.values(uniqueMap)
+          
+          setAllResults(uniqueResults)
+          
+          if (!data && uniqueResults.length > 0) {
+            data = uniqueResults[0]
           }
         } catch (e) {
           console.warn('Firestore results fetch failed:', e.message)
@@ -155,18 +173,46 @@ function Progress() {
         setLoading(false)
       }
     })
-    return () => unsub()
+    return () => {
+      unsub()
+      synth.cancel() // Stop speaking if we leave the page
+    }
   }, [navigate, location.state])
 
-  // Switch result logic
+  // Switch result logic — now restores the context globally
   const handleSwitchResult = async (id) => {
-    const found = allResults.find(r => r.id === id)
-    if (found) {
+    try {
+      setLoading(true)
+      const found = allResults.find(r => r.id === id)
+      if (!found) return
+
+      // Find the corresponding archived session to restore full context
+      const sessions = await getArchivedSessions()
+      const match = sessions.find(s => s.documentName === found.documentName)
+      
+      if (match) {
+        await restoreSession(match.id)
+      } else {
+        // Fallback: manually set active context if no session found
+        setActiveContext(found.documentName)
+      }
+
+      // Update local state to reflect new context
       setResults(found)
       setSelectedResultId(id)
-      setSwot(null) // Re-trigger SWOT
+      setSwot(null)
       generateSwot(found)
       setActiveTab('overview')
+      
+      // Stop TTS
+      synth.cancel()
+      setIsSpeaking(false)
+
+      // Optional: force sidebar refresh if needed, usually handled by polling
+    } catch (err) {
+      console.error('Switch context error:', err)
+    } finally {
+      setLoading(false)
     }
   }
 
@@ -245,6 +291,45 @@ function Progress() {
     }
   }
 
+  const handleSpeak = (text) => {
+    if (isSpeaking) {
+      synth.cancel()
+      setIsSpeaking(false)
+      return
+    }
+
+    if (!text) return
+
+    const utterance = new SpeechSynthesisUtterance(text)
+    utterance.rate = 0.95 // Slightly slower for clarity
+    utterance.pitch = 1.0
+    
+    utterance.onstart = () => setIsSpeaking(true)
+    utterance.onend = () => setIsSpeaking(false)
+    utterance.onerror = () => setIsSpeaking(false)
+
+    synth.speak(utterance)
+  }
+
+  const handleSpeakSwot = () => {
+    if (!swot) return
+    const text = `AI SWOT Analysis for your performance. 
+      Strengths: ${swot.strength}. 
+      Weaknesses: ${swot.weakness}. 
+      Opportunities: ${swot.opportunity}. 
+      Threats: ${swot.threat}.`
+    handleSpeak(text)
+  }
+
+  const handleSpeakReStudy = () => {
+    if (!reStudyData) return
+    const text = `Your Smart Re Study Lesson. 
+      Overview: ${reStudyData.refresher}. 
+      Key Tips: ${reStudyData.keyTips.join('. ')}. 
+      Next Goal: ${reStudyData.nextGoal}.`
+    handleSpeak(text)
+  }
+
   // ── Loading state ────────────────────────────────────────────────────────────
   if (loading) {
     return (
@@ -257,18 +342,18 @@ function Progress() {
     )
   }
 
-  // ── Empty state ──────────────────────────────────────────────────────────────
-  if (!results) {
+  // If results is null, it means no data found at all
+  if (!results && allResults.length === 0) {
     return (
       <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--color-bg-primary)', padding: '2rem' }}>
-        <div style={{ textAlign: 'center', maxWidth: 400 }}>
+        <div style={{ maxWidth: 400, textAlign: 'center', background: 'var(--color-bg-card)', border: '1px solid var(--color-border)', borderRadius: '24px', padding: '3rem 2rem' }}>
           <div style={{ width: 72, height: 72, borderRadius: '20px', background: 'var(--color-bg-elevated)', border: '1px solid var(--color-border)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 1.25rem', color: 'var(--color-text-muted)' }}>
             <BarChart3 size={32} />
           </div>
-          <h2 style={{ margin: '0 0 0.5rem', fontSize: '1.25rem', fontWeight: 700, color: 'var(--color-text-primary)' }}>No Results Yet</h2>
-          <p style={{ margin: '0 0 1.5rem', color: 'var(--color-text-muted)', fontSize: '0.9rem', lineHeight: 1.6 }}>Complete an adaptive quiz to see your performance analysis, improvement zones, and AI-powered insights.</p>
-          <button onClick={() => navigate('/dashboard')} style={{ padding: '0.75rem 1.5rem', background: 'linear-gradient(135deg,#6366f1,#9333ea)', color: '#fff', border: 'none', borderRadius: '10px', fontFamily: 'inherit', fontWeight: 600, fontSize: '0.9rem', cursor: 'pointer' }}>
-            Go to Dashboard
+          <h2 style={{ margin: '0 0 0.5rem', fontSize: '1.25rem', fontWeight: 700, color: 'var(--color-text-primary)' }}>No Analysis Ready</h2>
+          <p style={{ margin: '0 0 1.5rem', color: 'var(--color-text-muted)', fontSize: '0.9rem', lineHeight: 1.6 }}>Complete an adaptive quiz for any uploaded document to activate your performance intelligence.</p>
+          <button onClick={() => navigate('/dashboard')} className="btn-primary" style={{ padding: '0.75rem 1.5rem', width: '100%' }}>
+            Back to Dashboard
           </button>
         </div>
       </div>
@@ -307,36 +392,81 @@ function Progress() {
         }}>
           <ArrowLeft size={16} /> Dashboard
         </button>
-        {/* Topic Switcher Dropdown */}
-        <div style={{ position: 'relative' }}>
-          <select 
-            value={selectedResultId || ''} 
-            onChange={(e) => handleSwitchResult(e.target.value)}
-            style={{
-              padding: '0.45rem 1.25rem 0.45rem 0.875rem',
-              background: 'var(--color-bg-elevated)',
-              border: '1px solid var(--color-border)',
-              borderRadius: '100px',
-              fontFamily: 'inherit',
-              fontWeight: 600,
-              fontSize: '0.8rem',
-              color: 'var(--color-text-primary)',
-              cursor: 'pointer',
-              appearance: 'none',
-              maxWidth: '200px'
-            }}
-          >
-            {allResults.map(r => (
-              <option key={r.id} value={r.id}>
-                {r.documentName ? (r.documentName.length > 25 ? r.documentName.substring(0, 25) + '…' : r.documentName) : 'Untitled Quiz'}
-              </option>
-            ))}
-          </select>
-          <ChevronDown size={14} style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none', color: 'var(--color-text-muted)' }} />
+        <div style={{
+          display: 'flex', gap: '0.25rem', background: 'var(--color-bg-elevated)',
+          padding: '0.25rem', borderRadius: '100px', border: '1px solid var(--color-border)'
+        }}>
+          {['overview', 'review'].map(tab => (
+            <button
+              key={tab}
+              onClick={() => setActiveTab(tab)}
+              style={{
+                padding: '0.4rem 1.25rem', borderRadius: '100px', cursor: 'pointer',
+                fontSize: '0.75rem', fontWeight: 700, border: 'none', fontFamily: 'inherit',
+                background: activeTab === tab ? 'var(--color-accent)' : 'transparent',
+                color: activeTab === tab ? '#fff' : 'var(--color-text-muted)',
+                transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
+                textTransform: 'capitalize'
+              }}
+            >
+              {tab}
+            </button>
+          ))}
         </div>
+
+        <div style={{ width: 44 }} />
       </div>
 
-      <div style={{ maxWidth: 800, margin: '0 auto', padding: '2rem 1.5rem' }}>
+      <div style={{ maxWidth: 840, margin: '0 auto', padding: '1.5rem' }}>
+
+        {/* ── SUBJECT HUB: Choose your topic intelligence ── */}
+        <div style={{ marginBottom: '2.5rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginBottom: '1rem' }}>
+            <div style={{ padding: '0.4rem', borderRadius: '8px', background: 'var(--color-accent-soft)', color: 'var(--color-accent)' }}>
+              <Brain size={18} />
+            </div>
+            <h3 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 700, letterSpacing: '-0.01em' }}>Intelligence Hub</h3>
+          </div>
+          <div className="no-scrollbar" style={{ display: 'flex', gap: '0.75rem', overflowX: 'auto', paddingBottom: '0.5rem' }}>
+            {allResults.map(r => {
+              const selected = r.id === selectedResultId
+              const isActive = r.documentName === getActiveContextName()
+              return (
+                <button
+                  key={r.id}
+                  onClick={() => handleSwitchResult(r.id)}
+                  style={{
+                    flexShrink: 0, padding: '0.85rem 1.25rem', borderRadius: '16px',
+                    background: selected ? 'var(--color-bg-card)' : 'rgba(255,255,255,0.02)',
+                    border: selected ? '2px solid var(--color-accent)' : '1px solid var(--color-border)',
+                    boxShadow: selected ? '0 8px 24px rgba(99,102,241,0.15)' : 'none',
+                    textAlign: 'left', minWidth: 160, cursor: 'pointer',
+                    transition: 'all 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
+                    display: 'flex', flexDirection: 'column', gap: '0.3rem',
+                    position: 'relative'
+                  }}
+                >
+                  {isActive && (
+                    <div style={{
+                      position: 'absolute', top: -8, right: 8,
+                      background: 'var(--color-accent)', color: '#fff',
+                      fontSize: '0.6rem', fontWeight: 800, padding: '0.15rem 0.5rem',
+                      borderRadius: '100px', display: 'flex', alignItems: 'center', gap: '0.2rem'
+                    }}>
+                      <Check size={8} /> ACTIVE
+                    </div>
+                  )}
+                  <div style={{ fontSize: '0.7rem', fontWeight: 700, color: selected ? 'var(--color-accent)' : 'var(--color-text-muted)', textTransform: 'uppercase' }}>
+                    {r.documentName ? (r.documentName.length > 20 ? r.documentName.substring(0, 17) + '…' : r.documentName) : 'Untitled'}
+                  </div>
+                  <div style={{ fontSize: '0.9rem', fontWeight: 800, color: 'var(--color-text-primary)' }}>
+                    {selected ? `${r.accuracy}% Accuracy` : 'View Stats'}
+                  </div>
+                </button>
+              )
+            })}
+          </div>
+        </div>
 
         {/* ── HERO: Score Card ──────────────────────────────────────────────── */}
         <div style={{
@@ -598,9 +728,22 @@ function Progress() {
                       padding: '0.6rem 0.8rem', borderRadius: '8px', 
                       background: 'rgba(99,102,241,0.08)', fontSize: '0.75rem', 
                       fontWeight: 600, color: 'var(--color-accent)',
-                      display: 'flex', alignItems: 'center', gap: '0.5rem'
+                      display: 'flex', alignItems: 'center', gap: '0.5rem',
+                      justifyContent: 'space-between'
                     }}>
-                      <Target size={14} /> Next Goal: {reStudyData.nextGoal}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                        <Target size={14} /> Next Goal: {reStudyData.nextGoal}
+                      </div>
+                      <button 
+                        onClick={(e) => { e.stopPropagation(); handleSpeakReStudy() }}
+                        style={{ 
+                          background: 'transparent', border: 'none', cursor: 'pointer', 
+                          color: 'var(--color-accent)', display: 'flex', alignItems: 'center', gap: '0.3rem' 
+                        }}
+                      >
+                        {isSpeaking ? <CircleStop size={14} /> : <Volume2 size={14} />}
+                        <span style={{ fontSize: '0.65rem' }}>{isSpeaking ? 'Stop' : 'Listen'}</span>
+                      </button>
                     </div>
                   </div>
                 )}
@@ -617,6 +760,21 @@ function Progress() {
                   <h3 style={{ margin: 0, fontSize: '0.9rem', fontWeight: 700, color: 'var(--color-text-primary)' }}>AI SWOT Analysis</h3>
                   <p style={{ margin: 0, fontSize: '0.72rem', color: 'var(--color-text-muted)' }}>Strengths, Weaknesses, Opportunities, Threats</p>
                 </div>
+                <button 
+                  onClick={handleSpeakSwot}
+                  disabled={swotLoading || !swot}
+                  style={{ 
+                    marginLeft: 'auto', background: 'var(--color-bg-elevated)', border: '1px solid var(--color-border)',
+                    borderRadius: '8px', padding: '0.4rem 0.6rem', color: 'var(--color-accent)',
+                    cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.5rem',
+                    transition: 'all 0.2s ease', opacity: (swotLoading || !swot) ? 0.5 : 1
+                  }}
+                  onMouseEnter={e => { if (!swotLoading && swot) e.currentTarget.style.background = 'rgba(99,102,241,0.05)' }}
+                  onMouseLeave={e => { if (!swotLoading && swot) e.currentTarget.style.background = 'var(--color-bg-elevated)' }}
+                >
+                  {isSpeaking ? <CircleStop size={15} /> : <Volume2 size={15} />}
+                  <span style={{ fontSize: '0.75rem', fontWeight: 600 }}>{isSpeaking ? 'Stop Analysis' : 'Read Aloud'}</span>
+                </button>
               </div>
               {swotLoading ? (
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', color: 'var(--color-text-muted)', fontSize: '0.875rem', padding: '1rem 0' }}>
