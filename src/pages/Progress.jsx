@@ -121,6 +121,7 @@ function Progress() {
   const [allResults, setAllResults]         = useState([])
   const [selectedResultId, setSelectedResultId] = useState(null)
   const [currentContext, setCurrentContext] = useState(getActiveContextName())
+  const [showTopicMenu, setShowTopicMenu] = useState(false)
   const [error, setError]                   = useState('')
   const [isSpeaking, setIsSpeaking]         = useState(false)
   const synth = window.speechSynthesis
@@ -202,6 +203,7 @@ function Progress() {
   // Switch result logic — now restores the context globally
   const handleSwitchResult = async (id) => {
     try {
+      setShowTopicMenu(false)
       setLoading(true)
       const found = allResults.find(r => r.id === id)
       if (!found) return
@@ -442,87 +444,106 @@ function Progress() {
 
       <div style={{ maxWidth: 840, margin: '0 auto', padding: '1.5rem' }}>
 
-        {/* ── SUBJECT HUB: Choose your topic intelligence ── */}
-        <div style={{ marginBottom: '2.5rem' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.25rem' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
-              <div style={{ padding: '0.4rem', borderRadius: '8px', background: 'var(--color-accent-soft)', color: 'var(--color-accent)' }}>
-                <Brain size={18} />
+        {/* ── TOPIC SELECTOR DROPDOWN ── */}
+        <div style={{ marginBottom: '2rem', position: 'relative' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem' }}>
+             <div style={{ display: 'flex', alignItems: 'center', gap: '0.625rem' }}>
+              <div style={{ width: 32, height: 32, borderRadius: '8px', background: 'var(--color-accent-soft)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--color-accent)' }}>
+                <Brain size={16} />
               </div>
-              <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 700, letterSpacing: '-0.01em' }}>Intelligence Hub</h3>
-            </div>
-            <div style={{ fontSize: '0.7rem', fontWeight: 600, color: 'var(--color-text-muted)', background: 'var(--color-bg-elevated)', padding: '0.25rem 0.75rem', borderRadius: '100px', border: '1px solid var(--color-border)' }}>
-              {allResults.length} Research Projects
+              <div>
+                <h3 style={{ margin: 0, fontSize: '0.9rem', fontWeight: 700, color: 'var(--color-text-primary)' }}>Performance Intelligence</h3>
+                <p style={{ margin: 0, fontSize: '0.72rem', color: 'var(--color-text-muted)' }}>Analyze insights across your research documents</p>
+              </div>
             </div>
           </div>
-          
-          <div className="no-scrollbar" style={{ 
-            display: 'flex', gap: '1.25rem', overflowX: 'auto', 
-            padding: '0.5rem 0.25rem 1.5rem', scrollSnapType: 'x mandatory',
-            WebkitOverflowScrolling: 'touch', margin: '0 -0.5rem'
-          }}>
-            {allResults.map(r => {
-              const selected = r.id === selectedResultId
-              const isActive = r.documentName === currentContext
-              const isNew = r.id === 'current_active' && !r.results
-              
-              return (
-                <button
-                  key={r.id}
-                  onClick={() => handleSwitchResult(r.id)}
-                  style={{
-                    flexShrink: 0, padding: '1.25rem 1.75rem', borderRadius: '24px',
-                    background: selected ? 'var(--color-bg-card)' : 'var(--color-bg-elevated)',
-                    border: selected ? '2px solid var(--color-accent)' : '1px solid var(--color-border)',
-                    boxShadow: selected ? '0 15px 40px -10px rgba(99,102,241,0.25)' : '0 4px 12px rgba(0,0,0,0.03)',
-                    textAlign: 'left', minWidth: 240, cursor: 'pointer',
-                    transition: 'all 0.4s cubic-bezier(0.4, 0, 0.2, 1)',
-                    display: 'flex', flexDirection: 'column', gap: '0.5rem',
-                    position: 'relative', scrollSnapAlign: 'start',
-                    transform: selected ? 'scale(1.02)' : 'scale(1)'
-                  }}
-                  onMouseEnter={e => { 
-                    if (!selected) {
-                      e.currentTarget.style.borderColor = 'var(--color-accent-soft)'
-                      e.currentTarget.style.transform = 'translateY(-4px)'
-                    }
-                  }}
-                  onMouseLeave={e => { 
-                    if (!selected) {
-                      e.currentTarget.style.borderColor = 'var(--color-border)'
-                      e.currentTarget.style.transform = 'translateY(0)'
-                    }
-                  }}
-                >
-                  {(isActive || isNew) && (
-                    <div style={{
-                      position: 'absolute', top: -12, right: 16,
-                      background: isNew ? '#22c55e' : 'var(--color-accent)', 
-                      color: '#fff', fontSize: '0.65rem', fontWeight: 900, 
-                      padding: '0.25rem 0.75rem', borderRadius: '100px', 
-                      display: 'flex', alignItems: 'center', gap: '0.3rem',
-                      boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
-                      animation: isNew ? 'pulse 2s infinite' : 'none',
-                      zIndex: 10
-                    }}>
-                      {isNew ? <Sparkles size={10} /> : <Check size={10} />} 
-                      {isNew ? 'NEW' : 'ACTIVE'}
+
+          <button 
+            onClick={() => setShowTopicMenu(!showTopicMenu)}
+            style={{
+              width: '100%', padding: '1.25rem 1.5rem', borderRadius: '16px',
+              background: 'var(--color-bg-card)', border: '1px solid var(--color-border)',
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              cursor: 'pointer', transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
+              boxShadow: '0 4px 12px rgba(0,0,0,0.03)'
+            }}
+            onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--color-accent-soft)'}
+            onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--color-border)'}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+              <div style={{ 
+                width: 40, height: 40, borderRadius: '12px', 
+                background: 'rgba(99,102,241,0.08)', color: 'var(--color-accent)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center'
+              }}>
+                <TrendingUp size={20} />
+              </div>
+              <div style={{ textAlign: 'left' }}>
+                <div style={{ fontSize: '0.7rem', fontWeight: 800, color: 'var(--color-accent)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                  Selected Subject
+                </div>
+                <div style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--color-text-primary)' }}>
+                  {documentName || 'No subject selected'}
+                </div>
+              </div>
+            </div>
+            {showTopicMenu ? <ChevronUp size={20} color="var(--color-text-muted)" /> : <ChevronDown size={20} color="var(--color-text-muted)" />}
+          </button>
+
+          {showTopicMenu && (
+            <div className="fade-in" style={{
+              position: 'absolute', top: '105%', left: 0, right: 0, zIndex: 100,
+              background: 'var(--color-bg-elevated)', border: '1px solid var(--color-border)',
+              borderRadius: '20px', boxShadow: '0 20px 50px -12px rgba(0,0,0,0.25)',
+              maxHeight: '320px', overflowY: 'auto', padding: '0.5rem'
+            }}>
+              <div style={{ padding: '0.75rem 1rem', fontSize: '0.65rem', fontWeight: 800, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em', borderBottom: '1px solid var(--color-border)', marginBottom: '0.25rem' }}>
+                Switch Research Project
+              </div>
+              {allResults.map(r => {
+                const selected = r.id === selectedResultId
+                const isActive = r.documentName === currentContext
+                const isNew = r.id === 'current_active' && !r.results
+                
+                return (
+                  <button
+                    key={r.id}
+                    onClick={() => handleSwitchResult(r.id)}
+                    style={{
+                      width: '100%', padding: '1rem', borderRadius: '12px', border: 'none',
+                      background: selected ? 'rgba(99,102,241,0.08)' : 'transparent',
+                      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                      cursor: 'pointer', transition: 'all 0.15s ease'
+                    }}
+                    onMouseEnter={e => e.currentTarget.style.background = 'rgba(99,102,241,0.05)'}
+                    onMouseLeave={e => e.currentTarget.style.background = selected ? 'rgba(99,102,241,0.08)' : 'transparent'}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.85rem' }}>
+                      <div style={{ color: selected ? 'var(--color-accent)' : 'var(--color-text-muted)' }}>
+                        {isNew ? <Sparkles size={16} /> : <BookOpen size={16} />}
+                      </div>
+                      <div style={{ textAlign: 'left' }}>
+                        <div style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--color-text-primary)' }}>{r.documentName}</div>
+                        <div style={{ fontSize: '0.7rem', color: 'var(--color-text-muted)' }}>
+                          {isNew ? 'Ready for quiz' : `${r.accuracy}% Mastery`}
+                        </div>
+                      </div>
                     </div>
-                  )}
-                  <div style={{ 
-                    fontSize: '0.75rem', fontWeight: 700, 
-                    color: selected ? 'var(--color-accent)' : 'var(--color-text-muted)', 
-                    textTransform: 'uppercase', letterSpacing: '0.06em' 
-                  }}>
-                    {r.documentName ? (r.documentName.length > 25 ? r.documentName.substring(0, 22) + '…' : r.documentName) : 'Untitled'}
-                  </div>
-                  <div style={{ fontSize: '1.125rem', fontWeight: 800, color: 'var(--color-text-primary)', letterSpacing: '-0.02em' }}>
-                    {!r.results ? 'Generate Intelligence' : (selected ? `${r.accuracy}% Mastery` : 'Review Synthesis')}
-                  </div>
-                </button>
-              )
-            })}
-          </div>
+                    {(isActive || isNew) && (
+                      <div style={{
+                        background: isNew ? 'var(--color-success)' : 'var(--color-accent)', 
+                        color: '#fff', fontSize: '0.55rem', fontWeight: 900, 
+                        padding: '0.2rem 0.5rem', borderRadius: '100px', 
+                        display: 'flex', alignItems: 'center', gap: '0.2rem'
+                      }}>
+                        {isNew ? 'NEW' : 'ACTIVE'}
+                      </div>
+                    )}
+                  </button>
+                )
+              })}
+            </div>
+          )}
         </div>
 
         {/* ── HERO: Score Card ──────────────────────────────────────────────── */}
