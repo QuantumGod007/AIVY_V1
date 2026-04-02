@@ -21,6 +21,7 @@ import {
     FolderOpen
 } from 'lucide-react'
 import { getActiveContextName, getArchivedSessions, restoreSession } from '../services/storageService'
+import { getUserStats as getGameStats } from '../services/gamificationService'
 
 const NAV_ITEMS = [
     { to: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
@@ -40,6 +41,7 @@ function Sidebar() {
     const [allSessions, setAllSessions] = useState([])
     const [showMenu, setShowMenu] = useState(false)
     const [isSwitching, setIsSwitching] = useState(false)
+    const [userAvatar, setUserAvatar] = useState('')
     const navigate = useNavigate()
     const user = auth.currentUser
     const userInitial = user?.email?.charAt(0).toUpperCase() || 'U'
@@ -73,8 +75,12 @@ function Sidebar() {
                     }
                 })
                 setAllSessions(unique)
+
+                // Load user avatar
+                const stats = await getGameStats()
+                if (stats?.avatar) setUserAvatar(stats.avatar)
             } catch (err) {
-                console.warn('Sidebar sessions fetch failed')
+                console.warn('Sidebar stats fetch failed')
             }
         }
         loadSessions()
@@ -243,7 +249,7 @@ function Sidebar() {
                 </button>
 
                 <div className="sidebar-user">
-                    <div className="sidebar-user-avatar">{userInitial}</div>
+                    <div className="sidebar-user-avatar">{userAvatar || userInitial}</div>
                     {!collapsed && (
                         <div className="sidebar-user-info">
                             <span className="sidebar-user-email">{user?.email}</span>

@@ -33,8 +33,12 @@ function Profile() {
     const [loading, setLoading] = useState(true)
     const [aiLoading, setAiLoading] = useState(false)
     const [isEditing, setIsEditing] = useState(false)
+    const [isEditingAvatar, setIsEditingAvatar] = useState(false)
     const [tempName, setTempName] = useState(user?.displayName || user?.email?.split('@')[0] || 'Learner')
-    const avatar = user?.email?.charAt(0).toUpperCase() || 'U'
+    
+    // Available Avatars
+    const AVATARS = ['🎓', '🧠', '🚀', '🔥', '📚', '🎯', '🧪', '🧬', '🎨', '💻', '🌟', '🦄']
+    const currentAvatar = stats?.avatar || (user?.email?.charAt(0).toUpperCase() || 'U')
     const name = user?.displayName || user?.email?.split('@')[0] || 'Learner'
 
     useEffect(() => {
@@ -69,11 +73,23 @@ function Profile() {
     const handleUpdateName = async () => {
         if (!tempName.trim()) return
         try {
-            await updateUserProfile(tempName)
+            // Use current stats avatar or fallback
+            const av = stats?.avatar || currentAvatar
+            await updateUserProfile(tempName, av)
             setIsEditing(false)
-            window.location.reload() // Force sync across all components
+            window.location.reload() 
         } catch (err) {
             console.error('Update name error:', err)
+        }
+    }
+
+    const handleUpdateAvatar = async (emoji) => {
+        try {
+            await updateUserProfile(name, emoji)
+            setStats({ ...stats, avatar: emoji })
+            setIsEditingAvatar(false)
+        } catch (err) {
+            console.error('Update avatar error:', err)
         }
     }
 
@@ -109,8 +125,20 @@ function Profile() {
 
                 <div className="profile-layout">
                     {/* User Intro */}
-                    <div className="profile-card profile-hero">
-                        <div className="profile-avatar-large">{avatar}</div>
+                    <div className="profile-card profile-hero" style={{ position: 'relative' }}>
+                        <div className="profile-avatar-large" style={{ cursor: 'pointer' }} onClick={() => setIsEditingAvatar(!isEditingAvatar)}>
+                            {currentAvatar}
+                            <div className="avatar-edit-overlay"><Camera size={14} /></div>
+                        </div>
+
+                        {isEditingAvatar && (
+                            <div className="avatar-picker-popover fade-in">
+                                {AVATARS.map(a => (
+                                    <button key={a} className="avatar-choice" onClick={() => handleUpdateAvatar(a)}>{a}</button>
+                                ))}
+                            </div>
+                        )}
+
                         <div className="profile-info" style={{ flex: 1 }}>
                             {isEditing ? (
                                 <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.5rem' }}>
@@ -507,6 +535,47 @@ function Profile() {
                   padding: 0 1rem;
                   font-weight: 600;
                   cursor: pointer;
+                }
+                .avatar-edit-overlay {
+                  position: absolute;
+                  bottom: -2px;
+                  right: -2px;
+                  background: var(--color-accent);
+                  padding: 4px;
+                  border-radius: 50%;
+                  display: flex;
+                  border: 2px solid var(--color-bg-card);
+                }
+                .avatar-picker-popover {
+                  position: absolute;
+                  top: 120px;
+                  left: 1.5rem;
+                  background: var(--color-bg-elevated);
+                  border: 1px solid var(--color-border);
+                  border-radius: 16px;
+                  padding: 0.75rem;
+                  display: grid;
+                  grid-template-columns: repeat(4, 1fr);
+                  gap: 0.5rem;
+                  z-index: 100;
+                  box-shadow: 0 10px 40px rgba(0,0,0,0.3);
+                }
+                .avatar-choice {
+                  font-size: 1.5rem;
+                  width: 40px;
+                  height: 40px;
+                  display: flex;
+                  align-items: center;
+                  justify-content: center;
+                  background: transparent;
+                  border: none;
+                  border-radius: 8px;
+                  cursor: pointer;
+                  transition: transform 0.2s;
+                }
+                .avatar-choice:hover {
+                  background: var(--color-bg-secondary);
+                  transform: scale(1.1);
                 }
             `}</style>
         </div>

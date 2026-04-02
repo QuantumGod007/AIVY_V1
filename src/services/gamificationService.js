@@ -88,15 +88,24 @@ function getDisplayName() {
  * Write/update the flat leaderboard/{uid} doc with latest XP and badges.
  * Called after every XP award — keeps leaderboard queryable in one snapshot.
  */
-async function syncLeaderboardEntry(userId, totalXP, badges) {
+async function syncLeaderboardEntry(userId, totalXP, badges, avatar = '') {
     try {
         const user = auth.currentUser
         const ref = doc(db, 'leaderboard', userId)
+        
+        // Use provided avatar or existing one if available
+        let finalAvatar = avatar
+        if (!finalAvatar) {
+            const stats = await getDoc(doc(db, 'users', userId, 'gamification', 'stats'))
+            finalAvatar = stats.data()?.avatar || ''
+        }
+
         await setDoc(ref, {
             userId,
             name: user?.displayName || user?.email?.split('@')[0] || 'Student',
             email: user?.email || '',
             totalXP,
+            avatar: finalAvatar,
             badges: badges || [],
             updatedAt: serverTimestamp()
         }, { merge: true })
@@ -110,7 +119,7 @@ async function syncLeaderboardEntry(userId, totalXP, badges) {
 /**
  * Update user's display name and sync to leaderboard
  */
-export async function updateUserProfile(newName) {
+export async function updateUserProfile(newName, avatar = '') {
     try {
         const user = auth.currentUser
         if (!user) throw new Error('Not authenticated')
@@ -118,10 +127,13 @@ export async function updateUserProfile(newName) {
         const { updateProfile } = require('firebase/auth')
         await updateProfile(user, { displayName: newName })
         
+        const statsRef = doc(db, 'users', user.uid, 'gamification', 'stats')
+        await setDoc(statsRef, { avatar }, { merge: true })
+
         // Propagate to leaderboard entry immediately
         const stats = await getUserStats()
         if (stats) {
-            await syncLeaderboardEntry(user.uid, stats.totalXP || 0, stats.badges || [])
+            await syncLeaderboardEntry(user.uid, stats.totalXP || 0, stats.badges || [], avatar)
         }
         
         return true
@@ -348,6 +360,25 @@ export async function getLeaderboardRank() {
     }
 }
 
+const MOCK_BOTS = [
+    { userId: 'bot_1', name: 'Quantum Sage', totalXP: 550, avatar: '🤖', badges: ['quiz_master', 'century_club'], isBot: true },
+    { userId: 'bot_2', name: 'DeepMind', totalXP: 420, avatar: '🧠', badges: ['first_steps'], isBot: true },
+    { userId: 'bot_3', name: 'SpeedLearner', totalXP: 310, avatar: '🚀', badges: ['quiz_master'], isBot: true },
+    { userId: 'bot_4', name: 'NightOwl', totalXP: 240, avatar: '🦉', badges: [], isBot: true },
+    { userId: 'bot_5', name: 'Curious Cat', totalXP: 145, avatar: '🐱', badges: [], isBot: true }
+]
+
+function injectBots(realUsers) {
+    // Merge real users with bots and sort
+    const all = [...realUsers, ...MOCK_BOTS]
+    // Deduplicate in case real user has same ID as bot (unlikely but safe)
+    const unique = Array.from(new Map(all.map(u => [u.userId, u])).values())
+    return unique.sort((a, b) => (b.totalXP || 0) - (a.totalXP || 0)).slice(0, 15)
+}
+
+/**
+ * Real-time leaderboard subscription using onSnapshot.
+ */
 export function subscribeToLeaderboard(callback) {
     try {
         const lb = collection(db, 'leaderboard')
@@ -355,14 +386,13 @@ export function subscribeToLeaderboard(callback) {
         const unsub = onSnapshot(q, (snap) => {
             const results = []
             snap.forEach(d => results.push({ ...d.data(), userId: d.id }))
-            callback(results)
+            callback(injectBots(results))
         }, (err) => {
             console.error('leaderboard onSnapshot error:', err)
-            callback([])
+            callback(injectBots([]))
         })
         return unsub
     } catch (err) {
-        console.error('subscribeToLeaderboard error:', err)
         return () => {}
     }
 }

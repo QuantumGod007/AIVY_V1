@@ -134,15 +134,18 @@ function Leaderboard() {
                                 alignItems: 'center',
                                 gap: '0.4rem',
                                 fontSize: '0.75rem',
-                                fontWeight: 600,
-                                color: live ? 'var(--color-success, #22c55e)' : 'var(--color-text-muted)',
+                                fontWeight: 700,
+                                color: live ? 'var(--color-success)' : 'var(--color-text-muted)',
                                 background: 'var(--color-bg-elevated)',
                                 padding: '0.4rem 0.875rem',
                                 borderRadius: '100px',
-                                border: '1px solid var(--color-border)'
+                                border: '1px solid var(--color-border)',
+                                textTransform: 'uppercase',
+                                letterSpacing: '0.05em'
                             }}
                         >
-                            {live ? <><Wifi size={13} /> Live</> : <><WifiOff size={13} /> Offline</>}
+                            <span style={{ width: 6, height: 6, borderRadius: '50%', background: live ? 'var(--color-success)' : '#666', boxShadow: live ? '0 0 10px var(--color-success)' : 'none' }}></span>
+                            {live ? 'Live Sync' : 'Connecting'}
                         </div>
                     </div>
                 </div>
@@ -183,7 +186,7 @@ function Leaderboard() {
                                             <Crown size={20} className="podium-crown" />
                                         )}
                                         <div className="podium-avatar">
-                                            {entry?.name?.[0]?.toUpperCase() || entry?.email?.[0]?.toUpperCase() || '?'}
+                                            {entry?.avatar || entry?.name?.[0]?.toUpperCase() || '?'}
                                         </div>
                                         <div className="podium-name">
                                             {isMe ? 'You' : (entry?.name || entry?.email?.split('@')[0] || 'User')}
@@ -213,7 +216,7 @@ function Leaderboard() {
                                             )}
                                         </div>
                                         <div className="lb-avatar">
-                                            {entry.name?.[0]?.toUpperCase() || entry.email?.[0]?.toUpperCase() || '?'}
+                                            {entry.avatar || entry.name?.[0]?.toUpperCase() || '?'}
                                         </div>
                                         <div className="lb-info">
                                             <div className="lb-name">

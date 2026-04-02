@@ -5,7 +5,7 @@ import { useNavigate, Link } from 'react-router-dom'
 import { extractTextFromFile, isImageFile } from '../services/pdfService'
 import { generatePrerequisiteSurvey, generateStudyGuidance, generateAdaptiveQuiz, generateTopicWiseSummary, summarizeSession } from '../services/geminiService'
 import { saveCurrentQuiz, getCurrentQuiz, archiveCurrentSession } from '../services/storageService'
-import { initializeUserStats } from '../services/gamificationService'
+import { initializeUserStats, getLeaderboardRank } from '../services/gamificationService'
 import Gamification from '../components/Gamification'
 import Sidebar from '../components/Sidebar'
 import GamificationSummary from '../components/GamificationSummary'
@@ -61,6 +61,7 @@ function Dashboard() {
   const [success, setSuccess] = useState('')
   const [selectedFile, setSelectedFile] = useState(null)
   const [processingStage, setProcessingStage] = useState('')
+  const [globalRank, setGlobalRank] = useState(0)
   const [showNewDocModal, setShowNewDocModal] = useState(false)
   const [recentSessions, setRecentSessions] = useState([])
   const [inputMode, setInputMode] = useState('upload') // 'upload' | 'paste'
@@ -97,7 +98,8 @@ function Dashboard() {
       if (!user) { setIsLoading(false); navigate('/login'); return }
       try {
         setIsLoading(true)
-        await initializeUserStats(user.uid)
+        const rank = await getLeaderboardRank()
+        setGlobalRank(rank)
 
         const quiz = await getCurrentQuiz()
         setCurrentQuiz(quiz)
@@ -441,6 +443,22 @@ function Dashboard() {
             {isState(DASHBOARD_STATES.QUIZ_IN_PROGRESS) && (currentQuiz?.isPrerequisiteSurvey ? 'Survey Active' : 'Quiz Active')}
             {isState(DASHBOARD_STATES.QUIZ_COMPLETED) && 'Quiz Done'}
           </span>
+          {globalRank > 0 && (
+            <span className="db-rank-pill" style={{ 
+                background: 'rgba(255, 215, 0, 0.1)', 
+                color: '#FFD700', 
+                border: '1px solid rgba(255, 215, 0, 0.2)',
+                fontSize: '0.72rem',
+                fontWeight: 700,
+                padding: '0.3rem 0.75rem',
+                borderRadius: '100px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.4rem'
+            }}>
+                <Trophy size={11} /> Global Rank: #{globalRank}
+            </span>
+          )}
         </div>
         <div className="db-topbar-right">
           <GamificationSummary />
