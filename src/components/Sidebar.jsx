@@ -36,7 +36,7 @@ const NAV_ITEMS = [
 function Sidebar() {
     const [collapsed, setCollapsed] = useState(false)
     const [theme, setTheme] = useState(() => localStorage.getItem('theme') || 'dark')
-    const [activeContext, setActiveContext] = useState('')
+    const [currentTopic, setCurrentTopic] = useState('')
     const [allSessions, setAllSessions] = useState([])
     const [showMenu, setShowMenu] = useState(false)
     const [isSwitching, setIsSwitching] = useState(false)
@@ -51,20 +51,31 @@ function Sidebar() {
 
     useEffect(() => {
         // Poll for context changes locally
-        const check = () => setActiveContext(getActiveContextName())
+        const check = () => setCurrentTopic(getActiveContextName())
         check()
         
         // Load sessions for switcher
         const loadSessions = async () => {
-            const sessions = await getArchivedSessions()
-            const unique = []
-            const names = new Set()
-            sessions.forEach(s => {
-                if (!names.has(s.documentName)) {
-                    names.add(s.documentName); unique.push(s)
+            if (!user) return
+            try {
+                const quiz = await getCurrentQuiz()
+                if (!quiz) {
+                    // Import setActiveContext directly if needed or just use it if exported
+                    setCurrentTopic('')
                 }
-            })
-            setAllSessions(unique)
+                
+                const sessions = await getArchivedSessions()
+                const unique = []
+                const names = new Set()
+                sessions.forEach(s => {
+                    if (!names.has(s.documentName)) {
+                        names.add(s.documentName); unique.push(s)
+                    }
+                })
+                setAllSessions(unique)
+            } catch (err) {
+                console.warn('Sidebar sessions fetch failed')
+            }
         }
         loadSessions()
 
@@ -76,7 +87,7 @@ function Sidebar() {
         try {
             // Check if already active
             const session = allSessions.find(s => s.id === id)
-            if (session && session.documentName === activeContext) {
+            if (session && session.documentName === currentTopic) {
                 setShowMenu(false)
                 return
             }
@@ -99,6 +110,14 @@ function Sidebar() {
         if (window.confirm('Are you sure you want to logout?')) {
             try {
                 await signOut(auth)
+                // CLEAR LOCAL CONTEXT FOR DATA PRIVACY
+                localStorage.removeItem('aivy_active_context')
+                localStorage.removeItem('activeContext') 
+                Object.keys(localStorage).forEach(key => {
+                    if (key.startsWith('aivy_') || key.startsWith('flashcards_') || key.startsWith('studyPlan_')) {
+                        localStorage.removeItem(key)
+                    }
+                })
                 navigate('/login')
             } catch (e) {
                 console.error(e)
@@ -142,7 +161,7 @@ function Sidebar() {
                 ))}
             </nav>
 
-            {!collapsed && activeContext && (
+            {!collapsed && currentTopic && (
                 <div style={{ position: 'relative', margin: '1rem' }}>
                     <button 
                         onClick={() => setShowMenu(!showMenu)}
@@ -170,7 +189,7 @@ function Sidebar() {
                             <RefreshCw size={10} color="var(--color-text-muted)" style={{ animation: isSwitching ? 'spin 1.5s linear infinite' : 'none' }} />
                         </div>
                         <div style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--color-text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                            {activeContext}
+                            {currentTopic}
                         </div>
                     </button>
 
