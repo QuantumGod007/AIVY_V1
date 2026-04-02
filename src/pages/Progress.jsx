@@ -140,15 +140,28 @@ function Progress() {
         }
 
         // 2. Firestore results — show historical list and latest result
-        // 2. Aggregate all study contexts (Sessions + Results)
+        // 2. Aggregate all study contexts (Current + Sessions + Results)
         try {
+          const current = await getCurrentQuiz()
           const sessions = await getArchivedSessions()
           const firestoreResults = await getQuizResults()
           
           // Map of documentName -> { results, session }
           const contextMap = {}
           
-          // Seed from results (latest first)
+          // 1. Seed from Current (Brand new uploads/active focus)
+          if (current?.documentName) {
+            const baseName = current.documentName.replace(/ — Recovery/g, '')
+            contextMap[baseName] = {
+              id: 'current_active',
+              documentName: baseName,
+              accuracy: 0,
+              results: null,
+              session: null
+            }
+          }
+          
+          // 2. Aggregate from results (latest first)
           firestoreResults.forEach(r => {
             const baseName = (r.documentName || 'Untitled Quiz').replace(/ — Recovery/g, '')
             if (!contextMap[baseName]) {
@@ -158,10 +171,14 @@ function Progress() {
                 accuracy: r.accuracy, 
                 results: r 
               }
+            } else if (!contextMap[baseName].results) {
+              contextMap[baseName].results = r
+              contextMap[baseName].accuracy = r.accuracy
+              contextMap[baseName].id = r.id
             }
           })
           
-          // Merge from sessions (if not already found in results)
+          // 3. Merge from sessions (if not already found)
           sessions.forEach(s => {
             const baseName = (s.documentName || 'Document').replace(/ — Recovery/g, '')
             if (!contextMap[baseName]) {
@@ -169,7 +186,7 @@ function Progress() {
                 id: s.id, 
                 documentName: baseName, 
                 accuracy: s.accuracy || 0,
-                results: null, // No quiz done yet
+                results: null,
                 session: s
               }
             } else if (!contextMap[baseName].session) {
