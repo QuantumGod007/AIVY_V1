@@ -119,7 +119,8 @@ function Dashboard() {
                 : DASHBOARD_STATES.QUIZ_IN_PROGRESS)
             }
           } else {
-            setDashboardState(DASHBOARD_STATES.SURVEY_READY)
+            // No answers yet
+            setDashboardState(quiz.isPrerequisiteSurvey ? DASHBOARD_STATES.SURVEY_READY : DASHBOARD_STATES.QUIZ_IN_PROGRESS)
           }
         } else {
           setDashboardState(DASHBOARD_STATES.NO_DOCUMENT)
@@ -435,7 +436,7 @@ function Dashboard() {
             {isState(DASHBOARD_STATES.SURVEY_READY) && 'Survey Ready'}
             {isState(DASHBOARD_STATES.DOCUMENT_UPLOADED) && 'Document Loaded'}
             {isState(DASHBOARD_STATES.SURVEY_COMPLETED) && 'Baseline Set'}
-            {isState(DASHBOARD_STATES.QUIZ_IN_PROGRESS) && 'Quiz Active'}
+            {isState(DASHBOARD_STATES.QUIZ_IN_PROGRESS) && (currentQuiz?.isPrerequisiteSurvey ? 'Survey Active' : 'Quiz Active')}
             {isState(DASHBOARD_STATES.QUIZ_COMPLETED) && 'Quiz Done'}
           </span>
         </div>
@@ -472,18 +473,18 @@ function Dashboard() {
               <div>
                 <h2 className="db-action-title">
                   {(isState(DASHBOARD_STATES.NO_DOCUMENT) || isState(DASHBOARD_STATES.DOCUMENT_UPLOADED)) && 'Upload Study Material'}
-                  {isState(DASHBOARD_STATES.SURVEY_READY) && 'Survey Generated'}
-                  {isState(DASHBOARD_STATES.SURVEY_COMPLETED) && 'Ready for Quiz'}
-                  {isState(DASHBOARD_STATES.QUIZ_IN_PROGRESS) && 'Quiz in Progress'}
-                  {isState(DASHBOARD_STATES.QUIZ_COMPLETED) && 'Quiz Complete'}
+                  {isState(DASHBOARD_STATES.SURVEY_READY) && 'Prerequisite Survey'}
+                  {isState(DASHBOARD_STATES.SURVEY_COMPLETED) && 'Adaptive Quiz Ready'}
+                  {isState(DASHBOARD_STATES.QUIZ_IN_PROGRESS) && (currentQuiz?.isPrerequisiteSurvey ? 'Survey in Progress' : 'Adaptive Quiz')}
+                  {isState(DASHBOARD_STATES.QUIZ_COMPLETED) && 'Analysis Ready'}
                 </h2>
                 <p className="db-action-sub">
                   {isState(DASHBOARD_STATES.NO_DOCUMENT) && 'Start by uploading a PDF or text file'}
-                  {isState(DASHBOARD_STATES.DOCUMENT_UPLOADED) && 'Select a file, then generate survey'}
-                  {isState(DASHBOARD_STATES.SURVEY_READY) && 'Prerequisite assessment is ready'}
-                  {isState(DASHBOARD_STATES.SURVEY_COMPLETED) && 'Baseline established · Adaptive quiz ready'}
-                  {isState(DASHBOARD_STATES.QUIZ_IN_PROGRESS) && (currentQuiz?.userAnswers ? `${Object.keys(currentQuiz.userAnswers).length} / ${currentQuiz.questions.length} answered` : 'Continue where you left off')}
-                  {isState(DASHBOARD_STATES.QUIZ_COMPLETED) && 'Great work · View your results'}
+                  {isState(DASHBOARD_STATES.DOCUMENT_UPLOADED) && 'Select a file, then generate assessment'}
+                  {isState(DASHBOARD_STATES.SURVEY_READY) && 'Initial baseline survey is ready'}
+                  {isState(DASHBOARD_STATES.SURVEY_COMPLETED) && 'Baseline established · Learning path ready'}
+                  {isState(DASHBOARD_STATES.QUIZ_IN_PROGRESS) && (currentQuiz?.isPrerequisiteSurvey ? 'Establishing your knowledge baseline...' : 'Targeted learning session active...')}
+                  {isState(DASHBOARD_STATES.QUIZ_COMPLETED) && 'Great work · View your SWOT analysis'}
                 </p>
               </div>
             </div>
