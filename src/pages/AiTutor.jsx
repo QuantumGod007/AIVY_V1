@@ -5,7 +5,8 @@ import { generateTutorResponse } from '../services/geminiService'
 import { 
     MessageSquare, Send, Loader2, RotateCcw, 
     BookOpen, Brain, RefreshCw, FileText,
-    ChevronRight, ChevronDown, ChevronUp
+    ChevronRight, ChevronDown, ChevronUp,
+    Volume2, VolumeX
 } from 'lucide-react'
 import { auth } from '../firebase'
 import { addXP } from '../services/gamificationService'
@@ -30,9 +31,11 @@ function AiTutor() {
     const [documentName, setDocumentName] = useState('')
     const [allSessions, setAllSessions] = useState([])
     const [showTopicList, setShowTopicList] = useState(false)
+    const [speakingMsgIdx, setSpeakingMsgIdx] = useState(null)
     const bottomRef = useRef(null)
     const inputRef = useRef(null)
     const saveTimerRef = useRef(null)
+    const speechRef = useRef(null)
 
     const getContextId = (name) => name ? name.replace(/[^a-zA-Z0-9]/g, '_').substring(0, 100) : 'default'
 
@@ -148,10 +151,39 @@ function AiTutor() {
     }
 
     const clearChat = async () => {
+        stopSpeaking()
         const fresh = [WELCOME_MSG]
         setMessages(fresh)
         debouncedSave(fresh)
     }
+
+    const toggleSpeech = (text, index) => {
+        if (speakingMsgIdx === index) {
+            stopSpeaking()
+            return
+        }
+
+        stopSpeaking()
+        setSpeakingMsgIdx(index)
+
+        const utter = new SpeechSynthesisUtterance(text)
+        utter.rate = 1.0
+        utter.pitch = 1.0
+        utter.onend = () => setSpeakingMsgIdx(null)
+        utter.onerror = () => setSpeakingMsgIdx(null)
+        
+        speechRef.current = utter
+        window.speechSynthesis.speak(utter)
+    }
+
+    const stopSpeaking = () => {
+        window.speechSynthesis.cancel()
+        setSpeakingMsgIdx(null)
+    }
+
+    useEffect(() => {
+        return () => window.speechSynthesis.cancel()
+    }, [])
 
     const SUGGESTED = documentContext
         ? ['Summarise the key points', 'What should I focus on?', 'Explain the hardest concept', 'Give me 3 exam tips']
@@ -242,8 +274,30 @@ function AiTutor() {
                                         <p style={{ whiteSpace: 'pre-wrap', margin: 0, lineHeight: 1.6 }}>
                                             {msg.text}
                                         </p>
-                                        <div style={{ fontSize: '0.65rem', marginTop: '0.35rem', opacity: 0.45, textAlign: msg.role === 'user' ? 'right' : 'left' }}>
-                                            {msg.ts ? new Date(msg.ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}
+                                        <div style={{ 
+                                            display: 'flex', 
+                                            justifyContent: 'space-between', 
+                                            alignItems: 'center',
+                                            fontSize: '0.65rem', 
+                                            marginTop: '0.35rem', 
+                                            opacity: 0.45 
+                                        }}>
+                                            <span>
+                                                {msg.ts ? new Date(msg.ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}
+                                            </span>
+                                            {msg.role === 'ai' && (
+                                                <button 
+                                                    onClick={() => toggleSpeech(msg.text, i)}
+                                                    style={{ 
+                                                        background: 'none', border: 'none', padding: '4px',
+                                                        cursor: 'pointer', color: 'inherit', display: 'flex',
+                                                        alignItems: 'center', opacity: speakingMsgIdx === i ? 1 : 0.6
+                                                    }}
+                                                    title={speakingMsgIdx === i ? "Stop speaking" : "Read aloud"}
+                                                >
+                                                    {speakingMsgIdx === i ? <VolumeX size={12} /> : <Volume2 size={12} />}
+                                                </button>
+                                            )}
                                         </div>
                                     </div>
                                     {msg.role === 'user' && (

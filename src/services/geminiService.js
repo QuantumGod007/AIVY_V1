@@ -828,29 +828,41 @@ function getOrCreateChatSession(documentText, historyMessages = []) {
             ? `You are AIVY Intelligence, an expert academic research assistant. The student is engaging with the following source material:\n\n${documentText.substring(0, 30000)}\n\nProvide sophisticated, synthesised, and professional responses. Use structured analysis and deep reasoning. Always guide understanding through rigorous academic principles rather than just giving answers.`
             : `You are AIVY Intelligence, a high-level academic research agent. Synthesize information clearly and provide professional, data-driven reasoning based on user inquiries.`
 
-        // Convert existing history to Gemini format (Strict user/model alternation)
-        const geminiHistory = []
-        if (historyMessages && historyMessages.length > 0) {
-            let firstUserFound = false
-            for (const msg of historyMessages) {
-                if (!firstUserFound && msg.role !== 'user') continue
-                firstUserFound = true
+        const sdk = getLocalSDK()
+        if (sdk) {
+            const genModel = sdk.getGenerativeModel({ model: MODEL_NAME })
+            
+            // Convert existing history to Gemini format (Strict user/model alternation)
+            const geminiHistory = []
+            if (historyMessages && historyMessages.length > 0) {
+                let firstUserFound = false
+                for (const msg of historyMessages) {
+                    if (!firstUserFound && msg.role !== 'user') continue
+                    firstUserFound = true
 
-                if (msg.role === 'user') {
-                    geminiHistory.push({ role: 'user', parts: [{ text: msg.text || "" }] })
-                } else if (msg.role === 'ai') {
-                    geminiHistory.push({ role: 'model', parts: [{ text: msg.text || "" }] })
+                    if (msg.role === 'user') {
+                        geminiHistory.push({ role: 'user', parts: [{ text: msg.text || "" }] })
+                    } else if (msg.role === 'ai') {
+                        geminiHistory.push({ role: 'model', parts: [{ text: msg.text || "" }] })
+                    }
                 }
             }
+
+            // Inject system context as first user/model exchange if no history
+            const initialHistory = geminiHistory.length > 0 ? geminiHistory : [
+                { role: 'user', parts: [{ text: `System: ${systemContext}\n\nPlease acknowledge you are ready to help.` }] },
+                { role: 'model', parts: [{ text: "Hello! I'm AIVY Intelligence, your advanced research engine. I'm ready to synthesize your documents and answer any inquiries. How can I assist your study session today? 🧠" }] }
+            ]
+
+            _activeChatSession = genModel.startChat({ history: initialHistory })
+        } else {
+            // Fallback: If no SDK (production proxy only), we store history but chat sessions 
+            // are handled statelessly via callGeminiProxy for now.
+            _activeChatSession = {
+                isProxy: true,
+                history: historyMessages
+            }
         }
-
-        // Inject system context as first user/model exchange if no history
-        const initialHistory = geminiHistory.length > 0 ? geminiHistory : [
-            { role: 'user', parts: [{ text: `System: ${systemContext}\n\nPlease acknowledge you are ready to help.` }] },
-            { role: 'model', parts: [{ text: "Hello! I'm AIVY Intelligence, your advanced research engine. I'm ready to synthesize your documents and answer any inquiries. How can I assist your study session today? 🧠" }] }
-        ]
-
-        _activeChatSession = model.startChat({ history: initialHistory })
     }
 
     return _activeChatSession
@@ -874,11 +886,31 @@ export function resetChatSession() {
 export async function generateTutorResponse(documentText, message, chatHistory = []) {
     try {
         const chat = getOrCreateChatSession(documentText, chatHistory)
+        
+        if (chat.isProxy) {
+            // Stateless proxy call
+            const systemContext = documentText
+                ? `Source Material Context:\n${documentText.substring(0, 25000)}\n\nAnswer the student's questions based on this or general research knowledge.`
+                : `General Academic Research Context.`
+            
+            const prompt = `System Instructions: ${systemContext}\n\nStudent: ${message}`
+            
+            // Format history for proxy
+            const history = chat.history.map(m => ({
+                role: m.role === 'ai' ? 'model' : 'user',
+                parts: [{ text: m.text }]
+            }))
+
+            const text = await callGeminiProxy(prompt, { history })
+            // Update local history store
+            chat.history.push({ role: 'user', text }, { role: 'ai', text })
+            return text
+        }
+
         const result = await chat.sendMessage(message)
         return result.response.text()
     } catch (error) {
         console.error('generateTutorResponse error:', error)
-        // Reset session on error so next message starts fresh
         _activeChatSession = null
         throw new Error(`Tutor error: ${error.message}`)
     }
