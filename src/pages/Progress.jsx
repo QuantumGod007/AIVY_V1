@@ -120,6 +120,7 @@ function Progress() {
   const [reStudyData, setReStudyData]       = useState(null)
   const [allResults, setAllResults]         = useState([])
   const [selectedResultId, setSelectedResultId] = useState(null)
+  const [currentContext, setCurrentContext] = useState(getActiveContextName())
   const [error, setError]                   = useState('')
   const [isSpeaking, setIsSpeaking]         = useState(false)
   const synth = window.speechSynthesis
@@ -191,13 +192,25 @@ function Progress() {
       const match = sessions.find(s => s.documentName === found.documentName)
       
       if (match) {
-        if (match.documentName === getActiveContextName()) return
+        if (match.documentName === getActiveContextName()) {
+          setResults(found)
+          setSelectedResultId(id)
+          generateSwot(found)
+          return
+        }
         await restoreSession(match.id)
-        window.location.href = '/progress' 
+        setCurrentContext(found.documentName)
+        navigate('/progress', { state: { results: found }, replace: true })
       } else {
-        if (found.documentName === getActiveContextName()) return
+        if (found.documentName === getActiveContextName()) {
+          setResults(found)
+          setSelectedResultId(id)
+          generateSwot(found)
+          return
+        }
         setActiveContext(found.documentName)
-        window.location.href = '/progress'
+        setCurrentContext(found.documentName)
+        navigate('/progress', { state: { results: found }, replace: true })
       }
     } catch (err) {
       console.error('Switch context error:', err)
@@ -420,7 +433,7 @@ function Progress() {
           <div className="no-scrollbar" style={{ display: 'flex', gap: '0.75rem', overflowX: 'auto', paddingBottom: '0.5rem' }}>
             {allResults.map(r => {
               const selected = r.id === selectedResultId
-              const isActive = r.documentName === getActiveContextName()
+              const isActive = r.documentName === currentContext
               return (
                 <button
                   key={r.id}
