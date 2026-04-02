@@ -128,98 +128,74 @@ function Progress() {
   const location = useLocation()
 
   // Auth-gated data load — router state first, then Firestore
+  // Power real-time data loading with polling for dashboard uploads
   useEffect(() => {
-    const unsub = onAuthStateChanged(auth, async (user) => {
-      if (!user) { setLoading(false); navigate('/login'); return }
+    const loadData = async (isSilent = false) => {
+      if (!isSilent) setLoading(true)
       try {
         let data = null
-
-        // 1. Router state — passed directly from Quiz.jsx (no disk, no latency)
         if (location.state?.results) {
           data = location.state.results
         }
 
-        // 2. Firestore results — show historical list and latest result
-        // 2. Aggregate all study contexts (Current + Sessions + Results)
-        try {
-          const current = await getCurrentQuiz()
-          const sessions = await getArchivedSessions()
-          const firestoreResults = await getQuizResults()
-          
-          // Map of documentName -> { results, session }
-          const contextMap = {}
-          
-          // 1. Seed from Current (Brand new uploads/active focus)
-          if (current?.documentName) {
-            const baseName = current.documentName.replace(/ — Recovery/g, '')
-            contextMap[baseName] = {
-              id: 'current_active',
-              documentName: baseName,
-              accuracy: 0,
-              results: null,
-              session: null
-            }
+        const current = await getCurrentQuiz()
+        const sessions = await getArchivedSessions()
+        const firestoreResults = await getQuizResults()
+        
+        const contextMap = {}
+        if (current?.documentName) {
+          const baseName = current.documentName.replace(/ — Recovery/g, '')
+          contextMap[baseName] = { id: 'current_active', documentName: baseName, accuracy: 0, results: null, session: null }
+        }
+        firestoreResults.forEach(r => {
+          const baseName = (r.documentName || 'Untitled Quiz').replace(/ — Recovery/g, '')
+          if (!contextMap[baseName]) {
+            contextMap[baseName] = { id: r.id, documentName: baseName, accuracy: r.accuracy, results: r }
+          } else if (!contextMap[baseName].results) {
+            contextMap[baseName].results = r; contextMap[baseName].accuracy = r.accuracy; contextMap[baseName].id = r.id
           }
-          
-          // 2. Aggregate from results (latest first)
-          firestoreResults.forEach(r => {
-            const baseName = (r.documentName || 'Untitled Quiz').replace(/ — Recovery/g, '')
-            if (!contextMap[baseName]) {
-              contextMap[baseName] = { 
-                id: r.id, 
-                documentName: baseName, 
-                accuracy: r.accuracy, 
-                results: r 
-              }
-            } else if (!contextMap[baseName].results) {
-              contextMap[baseName].results = r
-              contextMap[baseName].accuracy = r.accuracy
-              contextMap[baseName].id = r.id
-            }
-          })
-          
-          // 3. Merge from sessions (if not already found)
-          sessions.forEach(s => {
-            const baseName = (s.documentName || 'Document').replace(/ — Recovery/g, '')
-            if (!contextMap[baseName]) {
-              contextMap[baseName] = { 
-                id: s.id, 
-                documentName: baseName, 
-                accuracy: s.accuracy || 0,
-                results: null,
-                session: s
-              }
-            } else if (!contextMap[baseName].session) {
-              contextMap[baseName].session = s
-            }
-          })
-          
-          const uniqueResults = Object.values(contextMap)
-          setAllResults(uniqueResults)
-          
-          if (!data && uniqueResults.length > 0) {
-            // Find one that has results if possible
-            const withResults = uniqueResults.find(r => r.results) || uniqueResults[0]
-            data = withResults.results || { documentName: withResults.documentName, questions: [], answers: {}, score: 0, total: 0, accuracy: 0 }
+        })
+        sessions.forEach(s => {
+          const baseName = (s.documentName || 'Document').replace(/ — Recovery/g, '')
+          if (!contextMap[baseName]) {
+            contextMap[baseName] = { id: s.id, documentName: baseName, accuracy: s.accuracy || 0, results: null, session: s }
+          } else if (!contextMap[baseName].session) {
+            contextMap[baseName].session = s
           }
-        } catch (e) {
-          console.warn('Context aggregation failed:', e.message)
+        })
+        
+        const unique = Object.values(contextMap)
+        setAllResults(unique)
+
+        if (!data && unique.length > 0) {
+          const withResults = unique.find(r => r.results) || unique[0]
+          data = withResults.results || { documentName: withResults.documentName, questions: [], answers: {}, score: 0, total: 0, accuracy: 0 }
         }
 
         if (data) {
           setResults(data)
-          setSelectedResultId(data.id)
-          generateSwot(data)
+          if (!selectedResultId) setSelectedResultId(data.id)
+          // Only generate SWOT if not present to avoid infinite loops on poll
+          if (!swot) generateSwot(data)
         }
       } catch (err) {
-        console.error('Error loading results:', err)
+        console.warn('Load error:', err)
       } finally {
-        setLoading(false)
+        if (!isSilent) setLoading(false)
       }
+    }
+
+    const unsubAuth = onAuthStateChanged(auth, u => {
+      if (!u) { navigate('/login'); return }
+      loadData()
     })
+
+    const interval = setInterval(() => loadData(true), 10000)
+
     return () => {
-      unsub()
-      synth.cancel() // Stop speaking if we leave the page
+      unsubAuth()
+      synth.cancel()
+      clearInterval(interval)
     }
   }, [navigate, location.state])
 
@@ -468,16 +444,22 @@ function Progress() {
 
         {/* ── SUBJECT HUB: Choose your topic intelligence ── */}
         <div style={{ marginBottom: '2.5rem' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginBottom: '1rem' }}>
-            <div style={{ padding: '0.4rem', borderRadius: '8px', background: 'var(--color-accent-soft)', color: 'var(--color-accent)' }}>
-              <Brain size={18} />
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.25rem' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+              <div style={{ padding: '0.4rem', borderRadius: '8px', background: 'var(--color-accent-soft)', color: 'var(--color-accent)' }}>
+                <Brain size={18} />
+              </div>
+              <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 700, letterSpacing: '-0.01em' }}>Intelligence Hub</h3>
             </div>
-            <h3 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 700, letterSpacing: '-0.01em' }}>Intelligence Hub</h3>
+            <div style={{ fontSize: '0.7rem', fontWeight: 600, color: 'var(--color-text-muted)', background: 'var(--color-bg-elevated)', padding: '0.25rem 0.75rem', borderRadius: '100px', border: '1px solid var(--color-border)' }}>
+              {allResults.length} Research Projects
+            </div>
           </div>
+          
           <div className="no-scrollbar" style={{ 
-            display: 'flex', gap: '1rem', overflowX: 'auto', 
-            padding: '0.5rem 0.25rem 1.25rem', scrollSnapType: 'x proximity',
-            WebkitOverflowScrolling: 'touch'
+            display: 'flex', gap: '1.25rem', overflowX: 'auto', 
+            padding: '0.5rem 0.25rem 1.5rem', scrollSnapType: 'x mandatory',
+            WebkitOverflowScrolling: 'touch', margin: '0 -0.5rem'
           }}>
             {allResults.map(r => {
               const selected = r.id === selectedResultId
@@ -489,41 +471,53 @@ function Progress() {
                   key={r.id}
                   onClick={() => handleSwitchResult(r.id)}
                   style={{
-                    flexShrink: 0, padding: '1rem 1.5rem', borderRadius: '20px',
-                    background: selected ? 'var(--color-bg-card)' : 'rgba(255,255,255,0.02)',
+                    flexShrink: 0, padding: '1.25rem 1.75rem', borderRadius: '24px',
+                    background: selected ? 'var(--color-bg-card)' : 'var(--color-bg-elevated)',
                     border: selected ? '2px solid var(--color-accent)' : '1px solid var(--color-border)',
-                    boxShadow: selected ? '0 12px 30px rgba(99,102,241,0.2)' : 'none',
-                    textAlign: 'left', minWidth: 200, cursor: 'pointer',
-                    transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-                    display: 'flex', flexDirection: 'column', gap: '0.4rem',
-                    position: 'relative', scrollSnapAlign: 'start'
+                    boxShadow: selected ? '0 15px 40px -10px rgba(99,102,241,0.25)' : '0 4px 12px rgba(0,0,0,0.03)',
+                    textAlign: 'left', minWidth: 240, cursor: 'pointer',
+                    transition: 'all 0.4s cubic-bezier(0.4, 0, 0.2, 1)',
+                    display: 'flex', flexDirection: 'column', gap: '0.5rem',
+                    position: 'relative', scrollSnapAlign: 'start',
+                    transform: selected ? 'scale(1.02)' : 'scale(1)'
                   }}
-                  onMouseEnter={e => { if (!selected) e.currentTarget.style.borderColor = 'var(--color-accent-soft)' }}
-                  onMouseLeave={e => { if (!selected) e.currentTarget.style.borderColor = 'var(--color-border)' }}
+                  onMouseEnter={e => { 
+                    if (!selected) {
+                      e.currentTarget.style.borderColor = 'var(--color-accent-soft)'
+                      e.currentTarget.style.transform = 'translateY(-4px)'
+                    }
+                  }}
+                  onMouseLeave={e => { 
+                    if (!selected) {
+                      e.currentTarget.style.borderColor = 'var(--color-border)'
+                      e.currentTarget.style.transform = 'translateY(0)'
+                    }
+                  }}
                 >
                   {(isActive || isNew) && (
                     <div style={{
-                      position: 'absolute', top: -10, right: 12,
-                      background: isNew ? 'var(--color-success)' : 'var(--color-accent)', 
-                      color: '#fff', fontSize: '0.6rem', fontWeight: 900, 
-                      padding: '0.2rem 0.6rem', borderRadius: '100px', 
-                      display: 'flex', alignItems: 'center', gap: '0.25rem',
-                      boxShadow: '0 4px 10px rgba(0,0,0,0.2)',
-                      animation: isNew ? 'pulse 2s infinite' : 'none'
+                      position: 'absolute', top: -12, right: 16,
+                      background: isNew ? '#22c55e' : 'var(--color-accent)', 
+                      color: '#fff', fontSize: '0.65rem', fontWeight: 900, 
+                      padding: '0.25rem 0.75rem', borderRadius: '100px', 
+                      display: 'flex', alignItems: 'center', gap: '0.3rem',
+                      boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+                      animation: isNew ? 'pulse 2s infinite' : 'none',
+                      zIndex: 10
                     }}>
-                      {isNew ? <Sparkles size={8} /> : <Check size={8} />} 
+                      {isNew ? <Sparkles size={10} /> : <Check size={10} />} 
                       {isNew ? 'NEW' : 'ACTIVE'}
                     </div>
                   )}
                   <div style={{ 
-                    fontSize: '0.7rem', fontWeight: 700, 
+                    fontSize: '0.75rem', fontWeight: 700, 
                     color: selected ? 'var(--color-accent)' : 'var(--color-text-muted)', 
-                    textTransform: 'uppercase', letterSpacing: '0.05em' 
+                    textTransform: 'uppercase', letterSpacing: '0.06em' 
                   }}>
-                    {r.documentName ? (r.documentName.length > 22 ? r.documentName.substring(0, 19) + '…' : r.documentName) : 'Untitled'}
+                    {r.documentName ? (r.documentName.length > 25 ? r.documentName.substring(0, 22) + '…' : r.documentName) : 'Untitled'}
                   </div>
-                  <div style={{ fontSize: '1rem', fontWeight: 800, color: 'var(--color-text-primary)' }}>
-                    {!r.results ? 'Start Studying' : (selected ? `${r.accuracy}% Accuracy` : 'View Analysis')}
+                  <div style={{ fontSize: '1.125rem', fontWeight: 800, color: 'var(--color-text-primary)', letterSpacing: '-0.02em' }}>
+                    {!r.results ? 'Generate Intelligence' : (selected ? `${r.accuracy}% Mastery` : 'Review Synthesis')}
                   </div>
                 </button>
               )
