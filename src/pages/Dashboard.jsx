@@ -430,7 +430,9 @@ function Dashboard() {
       {/* Top Bar */}
       <div className="db-topbar">
         <div className="db-topbar-left">
-          <h1 className="db-title">Dashboard</h1>
+          <h1 className="db-title" style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+             Welcome back, {user?.displayName || user?.email?.split('@')[0] || 'Learner'}!
+          </h1>
           <span className="db-state-pill">
             {isState(DASHBOARD_STATES.NO_DOCUMENT) && 'Getting Started'}
             {isState(DASHBOARD_STATES.SURVEY_READY) && 'Survey Ready'}

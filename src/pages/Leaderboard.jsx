@@ -167,33 +167,33 @@ function Leaderboard() {
                     </div>
                 ) : (
                     <div className="leaderboard-layout fade-in">
-                        {/* Podium — top 3 */}
-                        {board.length >= 3 && (
-                            <div className="podium-row">
-                                {[board[1], board[0], board[2]].map((entry, pos) => {
-                                    const actualRank = pos === 0 ? 2 : pos === 1 ? 1 : 3
-                                    const isMe = entry?.userId === user?.uid
-                                    return (
-                                        <div
-                                            key={entry?.userId}
-                                            className={`podium-block podium-rank-${actualRank} ${isMe ? 'podium-me' : ''}`}
-                                        >
-                                            {actualRank === 1 && (
-                                                <Crown size={20} className="podium-crown" />
-                                            )}
-                                            <div className="podium-avatar">
-                                                {entry?.name?.[0]?.toUpperCase() || entry?.email?.[0]?.toUpperCase() || '?'}
-                                            </div>
-                                            <div className="podium-name">
-                                                {isMe ? 'You' : (entry?.name || entry?.email?.split('@')[0] || 'User')}
-                                            </div>
-                                            <div className="podium-xp">{entry?.totalXP ?? 0} XP</div>
-                                            <div className="podium-base">#{actualRank}</div>
+                        {/* Podium — top 1-3 */}
+                        <div className="podium-row">
+                            {[1, 0, 2].map((pos) => {
+                                const entry = board[pos]
+                                if (!entry) return null
+                                const actualRank = pos === 0 ? 2 : pos === 1 ? 1 : 3
+                                const isMe = entry?.userId === user?.uid
+                                return (
+                                    <div
+                                        key={entry?.userId}
+                                        className={`podium-block podium-rank-${actualRank} ${isMe ? 'podium-me' : ''}`}
+                                    >
+                                        {actualRank === 1 && (
+                                            <Crown size={20} className="podium-crown" />
+                                        )}
+                                        <div className="podium-avatar">
+                                            {entry?.name?.[0]?.toUpperCase() || entry?.email?.[0]?.toUpperCase() || '?'}
                                         </div>
-                                    )
-                                })}
-                            </div>
-                        )}
+                                        <div className="podium-name">
+                                            {isMe ? 'You' : (entry?.name || entry?.email?.split('@')[0] || 'User')}
+                                        </div>
+                                        <div className="podium-xp">{entry?.totalXP ?? 0} XP</div>
+                                        <div className="podium-base">#{actualRank}</div>
+                                    </div>
+                                )
+                            })}
+                        </div>
 
                         {/* Full list */}
                         <div className="leaderboard-list">

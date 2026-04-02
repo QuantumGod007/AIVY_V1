@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import Sidebar from '../components/Sidebar'
-import { getUserStats, getBadgeDetails, BADGES } from '../services/gamificationService'
+import { getUserStats, getBadgeDetails, BADGES, updateUserProfile, getLeaderboardRank } from '../services/gamificationService'
 import { getArchivedSessions } from '../services/storageService'
 import { analyzeGlobalProgress } from '../services/geminiService'
 import { auth } from '../firebase'
@@ -25,12 +25,15 @@ import {
 } from 'lucide-react'
 
 function Profile() {
+    const user = auth.currentUser
     const [stats, setStats] = useState(null)
+    const [rank, setRank] = useState(0)
     const [sessions, setSessions] = useState([])
     const [aiInsights, setAiInsights] = useState(null)
     const [loading, setLoading] = useState(true)
     const [aiLoading, setAiLoading] = useState(false)
-    const user = auth.currentUser
+    const [isEditing, setIsEditing] = useState(false)
+    const [tempName, setTempName] = useState(user?.displayName || user?.email?.split('@')[0] || 'Learner')
     const avatar = user?.email?.charAt(0).toUpperCase() || 'U'
     const name = user?.displayName || user?.email?.split('@')[0] || 'Learner'
 
@@ -38,11 +41,14 @@ function Profile() {
         const loadAllData = async () => {
             setLoading(true)
             try {
-                const statsData = await getUserStats()
+                const [statsData, sessionData, currentRank] = await Promise.all([
+                    getUserStats(),
+                    getArchivedSessions(),
+                    getLeaderboardRank()
+                ])
                 setStats(statsData)
-
-                const sessionData = await getArchivedSessions()
                 setSessions(sessionData)
+                setRank(currentRank)
 
                 // If sessions exist, triggers AI analysis
                 if (sessionData.length > 0) {
@@ -59,6 +65,17 @@ function Profile() {
         }
         loadAllData()
     }, [])
+
+    const handleUpdateName = async () => {
+        if (!tempName.trim()) return
+        try {
+            await updateUserProfile(tempName)
+            setIsEditing(false)
+            window.location.reload() // Force sync across all components
+        } catch (err) {
+            console.error('Update name error:', err)
+        }
+    }
 
     if (loading) {
         return (
@@ -94,8 +111,24 @@ function Profile() {
                     {/* User Intro */}
                     <div className="profile-card profile-hero">
                         <div className="profile-avatar-large">{avatar}</div>
-                        <div className="profile-info">
-                            <h2 className="profile-name">{name}</h2>
+                        <div className="profile-info" style={{ flex: 1 }}>
+                            {isEditing ? (
+                                <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.5rem' }}>
+                                    <input 
+                                        value={tempName} 
+                                        onChange={(e) => setTempName(e.target.value)}
+                                        className="profile-edit-input"
+                                        placeholder="Display Name"
+                                    />
+                                    <button className="profile-edit-save" onClick={handleUpdateName}>Save</button>
+                                    <button className="profile-edit-cancel" onClick={() => setIsEditing(false)}>Cancel</button>
+                                </div>
+                            ) : (
+                                <h2 className="profile-name" style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                                    {name}
+                                    <button className="profile-edit-btn" onClick={() => setIsEditing(true)}>Edit</button>
+                                </h2>
+                            )}
                             <p className="profile-email">{user?.email}</p>
                             <div className="profile-level-badge">
                                 <Shield size={14} /> Level {level}
@@ -113,17 +146,17 @@ function Profile() {
                             </div>
                         </div>
                         <div className="stat-card">
+                            <Trophy className="stat-icon-badges" size={20} />
+                            <div className="stat-content">
+                                <span className="stat-label">Leaderboard Rank</span>
+                                <span className="stat-value">{rank > 0 ? `#${rank}` : 'Unranked'}</span>
+                            </div>
+                        </div>
+                        <div className="stat-card">
                             <Flame className="stat-icon-streak" size={20} />
                             <div className="stat-content">
                                 <span className="stat-label">Day Streak</span>
                                 <span className="stat-value">{stats?.loginStreak || 1}</span>
-                            </div>
-                        </div>
-                        <div className="stat-card">
-                            <Trophy className="stat-icon-badges" size={20} />
-                            <div className="stat-content">
-                                <span className="stat-label">Badges Earned</span>
-                                <span className="stat-value">{earnedBadges.length}</span>
                             </div>
                         </div>
                     </div>
@@ -435,6 +468,46 @@ function Profile() {
                 }
                 .milestone-item:last-child { border: none; }
                 .text-accent { color: var(--color-accent); }
+                .profile-edit-btn {
+                  font-size: 0.7rem;
+                  padding: 0.2rem 0.6rem;
+                  background: var(--color-bg-secondary);
+                  border: 1px solid var(--color-border);
+                  border-radius: 6px;
+                  color: var(--color-text-muted);
+                  cursor: pointer;
+                  font-weight: 500;
+                }
+                .profile-edit-btn:hover { background: var(--color-bg-elevated); color: var(--color-text-primary); }
+                .profile-edit-input {
+                  background: var(--color-bg-primary);
+                  border: 1px solid var(--color-accent);
+                  border-radius: 10px;
+                  padding: 0.6rem 1rem;
+                  color: var(--color-text-primary);
+                  font-family: inherit;
+                  font-size: 1.1rem;
+                  font-weight: 700;
+                  width: 250px;
+                }
+                .profile-edit-save {
+                  background: var(--color-accent);
+                  color: white;
+                  border: none;
+                  border-radius: 10px;
+                  padding: 0 1rem;
+                  font-weight: 600;
+                  cursor: pointer;
+                }
+                .profile-edit-cancel {
+                  background: transparent;
+                  color: var(--color-text-muted);
+                  border: 1px solid var(--color-border);
+                  border-radius: 10px;
+                  padding: 0 1rem;
+                  font-weight: 600;
+                  cursor: pointer;
+                }
             `}</style>
         </div>
     )

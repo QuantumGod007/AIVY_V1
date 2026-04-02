@@ -107,6 +107,30 @@ async function syncLeaderboardEntry(userId, totalXP, badges) {
 
 // ─── Initialize User Stats ────────────────────────────────────────────────────
 
+/**
+ * Update user's display name and sync to leaderboard
+ */
+export async function updateUserProfile(newName) {
+    try {
+        const user = auth.currentUser
+        if (!user) throw new Error('Not authenticated')
+        
+        const { updateProfile } = require('firebase/auth')
+        await updateProfile(user, { displayName: newName })
+        
+        // Propagate to leaderboard entry immediately
+        const stats = await getUserStats()
+        if (stats) {
+            await syncLeaderboardEntry(user.uid, stats.totalXP || 0, stats.badges || [])
+        }
+        
+        return true
+    } catch (err) {
+        console.error('updateUserProfile error:', err)
+        return false
+    }
+}
+
 export async function initializeUserStats(userId) {
     try {
         const statsRef = doc(db, 'users', userId, 'gamification', 'stats')
@@ -303,6 +327,27 @@ export async function getLeaderboard() {
  * @param {function} callback - called with sorted leaderboard array whenever data changes
  * @returns {function} unsubscribe function — call this on component unmount
  */
+/**
+ * Get internal rank of current user
+ */
+export async function getLeaderboardRank() {
+    try {
+        const userId = getUserId()
+        const lb = collection(db, 'leaderboard')
+        const q = query(lb, orderBy('totalXP', 'desc'))
+        const snap = await getDocs(q)
+        let rank = 1
+        let found = false
+        snap.forEach(doc => {
+            if (doc.id === userId) found = true
+            if (!found) rank++
+        })
+        return found ? rank : 0
+    } catch (err) {
+        return 0
+    }
+}
+
 export function subscribeToLeaderboard(callback) {
     try {
         const lb = collection(db, 'leaderboard')
