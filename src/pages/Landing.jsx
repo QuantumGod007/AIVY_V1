@@ -151,9 +151,9 @@ function Landing() {
       <section className="landing-hero">
         <div className="landing-hero-bg"></div>
         <div className="landing-hero-content">
-          <h1 className="landing-hero-title">Smarter learning. Powered by AI.</h1>
-          <p className="landing-hero-subtitle">
-            AI-powered learning paths, built around you.
+          <h1 className="landing-hero-title">Learn Smarter with AIVY</h1>
+          <p className="landing-hero-subtitle" style={{ maxWidth: '700px', margin: '1.5rem auto' }}>
+            Transform your study material into interactive quizzes, flashcards, and personalised learning experiences powered by AI.
           </p>
           <div className="landing-hero-actions">
             <Link to="/signup" className="landing-btn-primary">Get Started</Link>
@@ -468,16 +468,15 @@ function Landing() {
       </section>
 
       <section className="landing-hero-banner animate-on-scroll">
-        <div className="landing-hero-banner-text">
-          <h3 className="landing-hero-banner-title">Learn Smarter with AIVY</h3>
-          <p className="landing-hero-banner-subtitle">
-            Transform your study material into interactive quizzes, flashcards, and
-            personalised learning experiences powered by AI.
-          </p>
-          <p className="landing-hero-banner-subtitle" style={{ marginTop: '0.75rem', opacity: 0.75 }}>
+        <div className="landing-hero-banner-text" style={{ textAlign: 'left' }}>
+          <h3 className="landing-hero-banner-title" style={{ fontSize: '2.5rem', marginBottom: '1.5rem' }}>Precision Learning</h3>
+          <p className="landing-hero-banner-subtitle" style={{ fontSize: '1.1rem', lineHeight: '1.7', opacity: 0.9 }}>
             AIVY analyses your performance, adapts difficulty in real-time, and guides
-            you with intelligent learning paths built around <em>you</em>.
+            you with intelligent learning paths built around <strong>you</strong>.
           </p>
+          <div style={{ marginTop: '2rem' }}>
+            <Link to="/signup" className="landing-btn-primary" style={{ padding: '0.8rem 2rem' }}>Get Started Free</Link>
+          </div>
         </div>
         <div className="landing-hero-banner-image-container">
           <img
