@@ -1,5 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import Sidebar from '../components/Sidebar'
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 import { getCurrentQuiz, getArchivedSessions, restoreSession } from '../services/storageService'
 import { generateStudyPlan } from '../services/geminiService'
 import { saveStudyPlan, getStudyPlan, saveCompletedDays } from '../services/firestoreService'
@@ -346,13 +348,23 @@ function StudyPlanner() {
 
                                     {expandedDay === i && (
                                         <div className="plan-day-body">
-                                            {day.goal && <p className="plan-day-goal">{day.goal}</p>}
+                                            {day.goal && (
+                                                <div className="plan-day-goal markdown-content">
+                                                    <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                                                        {day.goal}
+                                                    </ReactMarkdown>
+                                                </div>
+                                            )}
                                             {day.tasks?.length > 0 && (
-                                                <ul className="plan-task-list">
+                                                <div className="plan-task-list">
                                                     {day.tasks.map((task, j) => (
-                                                        <li key={j} className="plan-task-item">{task}</li>
+                                                        <div key={j} className="plan-task-item markdown-content" style={{ marginBottom: '0.75rem' }}>
+                                                            <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                                                                {task}
+                                                            </ReactMarkdown>
+                                                        </div>
                                                     ))}
-                                                </ul>
+                                                </div>
                                             )}
                                         </div>
                                     )}
