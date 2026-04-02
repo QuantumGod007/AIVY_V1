@@ -479,11 +479,18 @@ function Landing() {
           </div>
         </div>
         <div className="landing-hero-banner-image-container">
-          <img
-            src="/images/aivy_study_workspace.png"
-            alt="Student using AIVY AI learning dashboard"
-            className="landing-hero-banner-image"
-          />
+          <video
+            autoPlay
+            muted
+            loop
+            playsInline
+            preload="none"
+            className="hero-video"
+            poster="/images/aivy_system_architecture.png"
+          >
+            <source src="/images/AI_Personalized_Learning_Visualization.mp4" type="video/mp4" />
+            Your browser does not support the video tag.
+          </video>
         </div>
       </section>
 

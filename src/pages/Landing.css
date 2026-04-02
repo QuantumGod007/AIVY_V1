@@ -1094,10 +1094,10 @@
 /* Hero Banner Section */
 .landing-hero-banner {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 4rem;
+  grid-template-columns: 45fr 55fr;
+  gap: 5rem;
   align-items: center;
-  padding: 8rem 4rem;
+  padding: 10rem 4rem;
   max-width: 1400px;
   margin: 0 auto;
   background: var(--color-bg-primary);
@@ -1127,10 +1127,32 @@
 }
 
 .landing-hero-banner-image-container {
-  border-radius: 24px;
+  border-radius: 32px;
   overflow: hidden;
-  box-shadow: 0 30px 60px -12px rgba(0,0,0,0.25);
+  box-shadow: 0 40px 100px -20px rgba(0,0,0,0.4), 0 0 40px rgba(124, 58, 237, 0.1);
   border: 1px solid var(--color-border);
+  background: var(--color-bg-elevated);
+  transition: transform 0.6s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.6s ease;
+  width: 100%;
+}
+
+.landing-hero-banner-image-container:hover {
+  transform: scale(1.02) translateY(-4px);
+  box-shadow: 0 50px 120px -25px rgba(0,0,0,0.5), 0 0 50px rgba(124, 58, 237, 0.15);
+}
+
+.hero-video {
+  width: 100%;
+  height: auto;
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+  display: block;
+  opacity: 0.95;
+  transition: opacity 0.4s ease;
+}
+
+.landing-hero-banner-image-container:hover .hero-video {
+  opacity: 1;
 }
 
 .landing-hero-banner-image {
@@ -1290,17 +1312,37 @@
     font-size: 0.95rem;
   }
 
-  .landing-hero-banner-text {
-    padding: 2rem 2rem 1rem;
+  .landing-hero-banner {
+    grid-template-columns: 1fr;
+    padding: 6rem 1.5rem;
+    gap: 3.5rem;
+    text-align: center;
   }
 
-  .landing-hero-banner-title,
+  .landing-hero-banner-text {
+    padding: 0;
+  }
+
+  .landing-hero-banner-title {
+    font-size: 2.2rem;
+    line-height: 1.1;
+  }
+
   .landing-hero-banner-subtitle {
-    font-size: 1.25rem;
+    font-size: 1.1rem;
+    max-width: 100%;
+    margin: 1.5rem auto;
   }
 
   .landing-hero-banner-image-container {
-    padding: 0 2rem 2rem;
+    padding: 0;
+    width: 100%;
+    max-width: 100%;
+    border-radius: 20px;
+  }
+
+  .hero-video {
+    border-radius: 20px;
   }
 
   .landing-section {
