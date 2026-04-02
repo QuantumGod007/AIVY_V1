@@ -3,15 +3,17 @@ export default async function handler(req, res) {
         return res.status(405).json({ error: 'Method Not Allowed' });
     }
 
-    const { model = 'gemini-1.5-flash', contents, generationConfig } = req.body;
-    const apiKey = process.env.GEMINI_API_KEY;
+    const { model = 'gemini-1.5-flash-latest', contents, generationConfig } = req.body;
+    let apiKey = process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY;
 
     if (!apiKey) {
-        return res.status(500).json({ error: 'GEMINI_API_KEY not configured on server' });
+        return res.status(500).json({ error: 'GEMINI_API_KEY not configured on Vercel. Please check Project Settings.' });
     }
+    
+    apiKey = apiKey.trim(); // Ensure no whitespace from UI entry
 
     try {
-        const url = `https://generativelanguage.googleapis.com/v1/models/${model}:generateContent?key=${apiKey}`;
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
         
         // Securely pass the contents (which may contain text and/or inlineData)
         const response = await fetch(url, {

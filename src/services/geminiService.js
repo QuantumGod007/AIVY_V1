@@ -1,8 +1,8 @@
 import { GoogleGenerativeAI } from '@google/generative-ai'
 
 // ─── Model Configuration ──────────────────────────────────────────────────────
-const MODEL_PRO   = 'gemini-1.5-pro'
-const MODEL_FLASH = 'gemini-1.5-flash'
+const MODEL_PRO   = 'gemini-1.5-pro-latest'
+const MODEL_FLASH = 'gemini-1.5-flash-latest'
 
 // Default model name
 const MODEL_NAME = MODEL_FLASH 
