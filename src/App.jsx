@@ -18,6 +18,8 @@ import Leaderboard from './pages/Leaderboard'
 import Profile from './pages/Profile'
 import Sessions from './pages/Sessions'
 
+import { Analytics } from '@vercel/analytics/react'
+
 function App() {
   const [user, setUser] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -69,23 +71,26 @@ function App() {
   }
 
   return (
-    <Routes>
-      <Route path="/" element={<Landing />} />
-      <Route path="/privacy-policy" element={<PrivacyPolicy />} />
-      <Route path="/login" element={<Login />} />
-      <Route path="/signup" element={<Signup />} />
-      <Route path="/verify-email" element={<VerifyEmail />} />
-      <Route path="/dashboard" element={<Dashboard />} />
-      <Route path="/quiz" element={<Quiz />} />
-      <Route path="/progress" element={<Progress />} />
-      <Route path="/ai-tutor" element={<AiTutor />} />
-      <Route path="/study-planner" element={<StudyPlanner />} />
-      <Route path="/flashcards" element={<Flashcards />} />
-      <Route path="/leaderboard" element={<Leaderboard />} />
-      <Route path="/profile" element={<Profile />} />
-      <Route path="/sessions" element={<Sessions />} />
-      <Route path="*" element={<Navigate to="/" />} />
-    </Routes>
+    <>
+      <Routes>
+        <Route path="/" element={<Landing />} />
+        <Route path="/privacy-policy" element={<PrivacyPolicy />} />
+        <Route path="/login" element={<Login />} />
+        <Route path="/signup" element={<Signup />} />
+        <Route path="/verify-email" element={<VerifyEmail />} />
+        <Route path="/dashboard" element={<Dashboard />} />
+        <Route path="/quiz" element={<Quiz />} />
+        <Route path="/progress" element={<Progress />} />
+        <Route path="/ai-tutor" element={<AiTutor />} />
+        <Route path="/study-planner" element={<StudyPlanner />} />
+        <Route path="/flashcards" element={<Flashcards />} />
+        <Route path="/leaderboard" element={<Leaderboard />} />
+        <Route path="/profile" element={<Profile />} />
+        <Route path="/sessions" element={<Sessions />} />
+        <Route path="*" element={<Navigate to="/" />} />
+      </Routes>
+      <Analytics />
+    </>
   )
 }
 
