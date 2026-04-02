@@ -1,5 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import Sidebar from '../components/Sidebar'
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 import { getCurrentQuiz } from '../services/storageService'
 import { generateTutorResponse } from '../services/geminiService'
 import { 
@@ -271,9 +273,11 @@ function AiTutor() {
                                         </div>
                                     )}
                                     <div className={`chat-bubble ${msg.role === 'user' ? 'chat-bubble-user' : 'chat-bubble-ai'}`}>
-                                        <p style={{ whiteSpace: 'pre-wrap', margin: 0, lineHeight: 1.6 }}>
-                                            {msg.text}
-                                        </p>
+                                        <div className="markdown-content">
+                                            <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                                                {msg.text}
+                                            </ReactMarkdown>
+                                        </div>
                                         <div style={{ 
                                             display: 'flex', 
                                             justifyContent: 'space-between', 
