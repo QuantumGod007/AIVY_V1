@@ -474,39 +474,55 @@ function Progress() {
             </div>
             <h3 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 700, letterSpacing: '-0.01em' }}>Intelligence Hub</h3>
           </div>
-          <div className="no-scrollbar" style={{ display: 'flex', gap: '0.75rem', overflowX: 'auto', paddingBottom: '0.5rem' }}>
+          <div className="no-scrollbar" style={{ 
+            display: 'flex', gap: '1rem', overflowX: 'auto', 
+            padding: '0.5rem 0.25rem 1.25rem', scrollSnapType: 'x proximity',
+            WebkitOverflowScrolling: 'touch'
+          }}>
             {allResults.map(r => {
               const selected = r.id === selectedResultId
               const isActive = r.documentName === currentContext
+              const isNew = r.id === 'current_active' && !r.results
+              
               return (
                 <button
                   key={r.id}
                   onClick={() => handleSwitchResult(r.id)}
                   style={{
-                    flexShrink: 0, padding: '0.85rem 1.25rem', borderRadius: '16px',
+                    flexShrink: 0, padding: '1rem 1.5rem', borderRadius: '20px',
                     background: selected ? 'var(--color-bg-card)' : 'rgba(255,255,255,0.02)',
                     border: selected ? '2px solid var(--color-accent)' : '1px solid var(--color-border)',
-                    boxShadow: selected ? '0 8px 24px rgba(99,102,241,0.15)' : 'none',
-                    textAlign: 'left', minWidth: 160, cursor: 'pointer',
-                    transition: 'all 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
-                    display: 'flex', flexDirection: 'column', gap: '0.3rem',
-                    position: 'relative'
+                    boxShadow: selected ? '0 12px 30px rgba(99,102,241,0.2)' : 'none',
+                    textAlign: 'left', minWidth: 200, cursor: 'pointer',
+                    transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+                    display: 'flex', flexDirection: 'column', gap: '0.4rem',
+                    position: 'relative', scrollSnapAlign: 'start'
                   }}
+                  onMouseEnter={e => { if (!selected) e.currentTarget.style.borderColor = 'var(--color-accent-soft)' }}
+                  onMouseLeave={e => { if (!selected) e.currentTarget.style.borderColor = 'var(--color-border)' }}
                 >
-                  {isActive && (
+                  {(isActive || isNew) && (
                     <div style={{
-                      position: 'absolute', top: -8, right: 8,
-                      background: 'var(--color-accent)', color: '#fff',
-                      fontSize: '0.6rem', fontWeight: 800, padding: '0.15rem 0.5rem',
-                      borderRadius: '100px', display: 'flex', alignItems: 'center', gap: '0.2rem'
+                      position: 'absolute', top: -10, right: 12,
+                      background: isNew ? 'var(--color-success)' : 'var(--color-accent)', 
+                      color: '#fff', fontSize: '0.6rem', fontWeight: 900, 
+                      padding: '0.2rem 0.6rem', borderRadius: '100px', 
+                      display: 'flex', alignItems: 'center', gap: '0.25rem',
+                      boxShadow: '0 4px 10px rgba(0,0,0,0.2)',
+                      animation: isNew ? 'pulse 2s infinite' : 'none'
                     }}>
-                      <Check size={8} /> ACTIVE
+                      {isNew ? <Sparkles size={8} /> : <Check size={8} />} 
+                      {isNew ? 'NEW' : 'ACTIVE'}
                     </div>
                   )}
-                  <div style={{ fontSize: '0.7rem', fontWeight: 700, color: selected ? 'var(--color-accent)' : 'var(--color-text-muted)', textTransform: 'uppercase' }}>
-                    {r.documentName ? (r.documentName.length > 20 ? r.documentName.substring(0, 17) + '…' : r.documentName) : 'Untitled'}
+                  <div style={{ 
+                    fontSize: '0.7rem', fontWeight: 700, 
+                    color: selected ? 'var(--color-accent)' : 'var(--color-text-muted)', 
+                    textTransform: 'uppercase', letterSpacing: '0.05em' 
+                  }}>
+                    {r.documentName ? (r.documentName.length > 22 ? r.documentName.substring(0, 19) + '…' : r.documentName) : 'Untitled'}
                   </div>
-                  <div style={{ fontSize: '0.9rem', fontWeight: 800, color: 'var(--color-text-primary)' }}>
+                  <div style={{ fontSize: '1rem', fontWeight: 800, color: 'var(--color-text-primary)' }}>
                     {!r.results ? 'Start Studying' : (selected ? `${r.accuracy}% Accuracy` : 'View Analysis')}
                   </div>
                 </button>
