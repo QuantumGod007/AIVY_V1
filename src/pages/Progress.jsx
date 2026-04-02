@@ -140,27 +140,53 @@ function Progress() {
         }
 
         // 2. Firestore results — show historical list and latest result
+        // 2. Aggregate all study contexts (Sessions + Results)
         try {
+          const sessions = await getArchivedSessions()
           const firestoreResults = await getQuizResults()
           
-          // Deduplicate by documentName — keep only the LATEST attempt for each
-          const uniqueMap = {}
+          // Map of documentName -> { results, session }
+          const contextMap = {}
+          
+          // Seed from results (latest first)
           firestoreResults.forEach(r => {
-            // Normalize name: Remove " — Recovery" if present for unique grouping
             const baseName = (r.documentName || 'Untitled Quiz').replace(/ — Recovery/g, '')
-            if (!uniqueMap[baseName]) {
-                uniqueMap[baseName] = { ...r, documentName: baseName } // Normalize for UI
+            if (!contextMap[baseName]) {
+              contextMap[baseName] = { 
+                id: r.id, 
+                documentName: baseName, 
+                accuracy: r.accuracy, 
+                results: r 
+              }
             }
           })
-          const uniqueResults = Object.values(uniqueMap)
           
+          // Merge from sessions (if not already found in results)
+          sessions.forEach(s => {
+            const baseName = (s.documentName || 'Document').replace(/ — Recovery/g, '')
+            if (!contextMap[baseName]) {
+              contextMap[baseName] = { 
+                id: s.id, 
+                documentName: baseName, 
+                accuracy: s.accuracy || 0,
+                results: null, // No quiz done yet
+                session: s
+              }
+            } else if (!contextMap[baseName].session) {
+              contextMap[baseName].session = s
+            }
+          })
+          
+          const uniqueResults = Object.values(contextMap)
           setAllResults(uniqueResults)
           
           if (!data && uniqueResults.length > 0) {
-            data = uniqueResults[0]
+            // Find one that has results if possible
+            const withResults = uniqueResults.find(r => r.results) || uniqueResults[0]
+            data = withResults.results || { documentName: withResults.documentName, questions: [], answers: {}, score: 0, total: 0, accuracy: 0 }
           }
         } catch (e) {
-          console.warn('Firestore results fetch failed:', e.message)
+          console.warn('Context aggregation failed:', e.message)
         }
 
         if (data) {
@@ -187,30 +213,31 @@ function Progress() {
       const found = allResults.find(r => r.id === id)
       if (!found) return
 
-      // Find the corresponding archived session to restore full context
+      const results = found.results || { documentName: found.documentName, questions: [], answers: {}, score: 0, total: 0, accuracy: 0 }
+      setSelectedResultId(id)
+
+      // Find sessions
       const sessions = await getArchivedSessions()
       const match = sessions.find(s => s.documentName === found.documentName)
       
       if (match) {
         if (match.documentName === getActiveContextName()) {
-          setResults(found)
-          setSelectedResultId(id)
-          generateSwot(found)
+          setResults(results)
+          generateSwot(results)
           return
         }
         await restoreSession(match.id)
         setCurrentContext(found.documentName)
-        navigate('/progress', { state: { results: found }, replace: true })
+        navigate('/progress', { state: { results: results }, replace: true })
       } else {
         if (found.documentName === getActiveContextName()) {
-          setResults(found)
-          setSelectedResultId(id)
-          generateSwot(found)
+          setResults(results)
+          generateSwot(results)
           return
         }
         setActiveContext(found.documentName)
         setCurrentContext(found.documentName)
-        navigate('/progress', { state: { results: found }, replace: true })
+        navigate('/progress', { state: { results: results }, replace: true })
       }
     } catch (err) {
       console.error('Switch context error:', err)
@@ -463,7 +490,7 @@ function Progress() {
                     {r.documentName ? (r.documentName.length > 20 ? r.documentName.substring(0, 17) + '…' : r.documentName) : 'Untitled'}
                   </div>
                   <div style={{ fontSize: '0.9rem', fontWeight: 800, color: 'var(--color-text-primary)' }}>
-                    {selected ? `${r.accuracy}% Accuracy` : 'View Stats'}
+                    {!r.results ? 'Start Studying' : (selected ? `${r.accuracy}% Accuracy` : 'View Analysis')}
                   </div>
                 </button>
               )
