@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { NavLink, useNavigate } from 'react-router-dom'
-import { signOut } from 'firebase/auth'
+import { signOut, onAuthStateChanged } from 'firebase/auth'
 import { auth } from '../firebase'
 import {
     LayoutDashboard,
@@ -52,41 +52,55 @@ function Sidebar() {
     }, [theme])
 
     useEffect(() => {
-        // Poll for context changes locally
+        // Poll for current context name changes locally (from other tabs/pages)
         const check = () => setCurrentTopic(getActiveContextName())
         check()
-        
-        // Load sessions for switcher
-        const loadSessions = async () => {
-            if (!user) return
-            try {
-                const quiz = await getCurrentQuiz()
-                if (!quiz) {
-                    // Import setActiveContext directly if needed or just use it if exported
-                    setCurrentTopic('')
-                }
-                
-                const sessions = await getArchivedSessions()
-                const unique = []
-                const names = new Set()
-                sessions.forEach(s => {
-                    if (!names.has(s.documentName)) {
-                        names.add(s.documentName); unique.push(s)
-                    }
-                })
-                setAllSessions(unique)
-
-                // Load user avatar
-                const stats = await getGameStats()
-                if (stats?.avatar) setUserAvatar(stats.avatar)
-            } catch (err) {
-                console.warn('Sidebar stats fetch failed')
-            }
-        }
-        loadSessions()
-
         const interval = setInterval(check, 1000)
-        return () => clearInterval(interval)
+
+        // Reactive Auth listener for sessions & avatar
+        const unsubAuth = onAuthStateChanged(auth, async (u) => {
+            if (!u) {
+                setAllSessions([])
+                setUserAvatar('')
+                return
+            }
+            try {
+                // Initial load
+                const loadData = async () => {
+                    const quiz = await getCurrentQuiz()
+                    if (!quiz) setCurrentTopic('')
+                    
+                    const sessions = await getArchivedSessions()
+                    const unique = []
+                    const names = new Set()
+                    sessions.forEach(s => {
+                        if (!names.has(s.documentName)) {
+                            names.add(s.documentName); unique.push(s)
+                        }
+                    })
+                    setAllSessions(unique)
+
+                    const stats = await getGameStats()
+                    if (stats?.avatar) setUserAvatar(stats.avatar)
+                }
+                loadData()
+            } catch (err) {
+                console.warn('Sidebar data load error')
+            }
+        })
+
+        // Listen for XP/Avatar updates globally
+        const handleStatsUpdate = async () => {
+            const stats = await getGameStats()
+            if (stats?.avatar) setUserAvatar(stats.avatar)
+        }
+        window.addEventListener('gamification_update', handleStatsUpdate)
+
+        return () => {
+            clearInterval(interval)
+            unsubAuth()
+            window.removeEventListener('gamification_update', handleStatsUpdate)
+        }
     }, [])
 
     const handleSwitch = async (id) => {
