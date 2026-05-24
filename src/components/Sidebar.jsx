@@ -263,7 +263,13 @@ function Sidebar() {
                 </button>
 
                 <div className="sidebar-user">
-                    <div className="sidebar-user-avatar">{userAvatar || userInitial}</div>
+                    <div className="sidebar-user-avatar">
+                        {userAvatar && userAvatar.startsWith('http') ? (
+                            <img src={userAvatar} alt="U" style={{ width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover' }} />
+                        ) : (
+                            userAvatar || userInitial
+                        )}
+                    </div>
                     {!collapsed && (
                         <div className="sidebar-user-info">
                             <span className="sidebar-user-email">{user?.email}</span>

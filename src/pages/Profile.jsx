@@ -21,8 +21,11 @@ import {
     Clock,
     Medal,
     Brain,
-    Sparkles
+    Sparkles,
+    Camera,
+    Plus
 } from 'lucide-react'
+import { uploadProfileImage } from '../services/gamificationService'
 
 function Profile() {
     const user = auth.currentUser
@@ -32,14 +35,23 @@ function Profile() {
     const [aiInsights, setAiInsights] = useState(null)
     const [loading, setLoading] = useState(true)
     const [aiLoading, setAiLoading] = useState(false)
+    const [uploading, setUploading] = useState(false)
     const [isEditing, setIsEditing] = useState(false)
     const [isEditingAvatar, setIsEditingAvatar] = useState(false)
-    const [tempName, setTempName] = useState(user?.displayName || user?.email?.split('@')[0] || 'Learner')
+    const [tempName, setTempName] = useState('')
+
+    useEffect(() => {
+        if (user) {
+            setTempName(user.displayName || user.email?.split('@')[0] || 'Learner')
+        }
+    }, [user])
     
     // Available Avatars
     const AVATARS = ['🎓', '🧠', '🚀', '🔥', '📚', '🎯', '🧪', '🧬', '🎨', '💻', '🌟', '🦄']
-    const currentAvatar = stats?.avatar || (user?.email?.charAt(0).toUpperCase() || 'U')
+    const currentAvatar = stats?.avatar || user?.photoURL || (user?.email?.charAt(0).toUpperCase() || 'U')
     const name = user?.displayName || user?.email?.split('@')[0] || 'Learner'
+
+    const isImageAvatar = typeof currentAvatar === 'string' && currentAvatar.startsWith('http')
 
     useEffect(() => {
         const loadAllData = async () => {
@@ -88,8 +100,26 @@ function Profile() {
             await updateUserProfile(name, emoji)
             setStats({ ...stats, avatar: emoji })
             setIsEditingAvatar(false)
+            // Optionally reload or use state to reflect change
         } catch (err) {
             console.error('Update avatar error:', err)
+        }
+    }
+
+    const handleFileUpload = async (e) => {
+        const file = e.target.files[0]
+        if (!file) return
+        
+        setUploading(true)
+        try {
+            const url = await uploadProfileImage(file)
+            setStats({ ...stats, avatar: url })
+            setIsEditingAvatar(false)
+            window.location.reload()
+        } catch (err) {
+            alert('Failed to upload image. Please try again.')
+        } finally {
+            setUploading(false)
         }
     }
 
@@ -108,7 +138,6 @@ function Profile() {
     }
 
     const earnedBadges = getBadgeDetails(stats?.badges || [])
-    const unearnedBadges = Object.values(BADGES).filter(b => !stats?.badges?.includes(b.id))
     const totalXP = stats?.totalXP || 0
     const level = stats?.level || Math.floor(totalXP / 100) + 1
     const nextLevelXP = level * 100
@@ -118,466 +147,349 @@ function Profile() {
         <div className="app-layout">
             <Sidebar />
             <main className="app-main">
-                <div className="page-header">
-                    <h1 className="page-title">Profile</h1>
-                    <p className="page-subtitle">Your learning identity and achievements</p>
+                <div className="profile-dashboard">
+                    {/* Top Section: Identity & Quick Stats */}
+                    <header className="profile-identity-strip">
+                        <div className="identity-left">
+                            <div className="avatar-container-premium">
+                                <div className="avatar-hex-outer" onClick={() => setIsEditingAvatar(!isEditingAvatar)}>
+                                    {isImageAvatar ? (
+                                        <img src={currentAvatar} alt="Profile" className="avatar-img" />
+                                    ) : (
+                                        <span className="avatar-emoji">{currentAvatar}</span>
+                                    )}
+                                    <div className="hex-border"></div>
+                                    <div className="hex-edit-overlay"><Camera size={18} /></div>
+                                </div>
+                                <div className="user-text-basic">
+                                    {isEditing ? (
+                                        <div className="name-edit-box">
+                                            <input 
+                                                value={tempName} 
+                                                onChange={(e) => setTempName(e.target.value)}
+                                                onBlur={handleUpdateName}
+                                                onKeyDown={(e) => e.key === 'Enter' && handleUpdateName()}
+                                                autoFocus
+                                            />
+                                        </div>
+                                    ) : (
+                                        <h1 className="user-name-h1" onClick={() => setIsEditing(true)}>
+                                            {name} <Sparkles size={16} className="spark-ico" />
+                                        </h1>
+                                    )}
+                                    <p className="user-email-subtitle">{user?.email}</p>
+                                </div>
+                                {isEditingAvatar && (
+                                    <div className="avatar-popover-minimal bounce-in">
+                                        <div className="emoji-row-minimal">
+                                            {AVATARS.map(a => (
+                                                <button key={a} onClick={() => handleUpdateAvatar(a)}>{a}</button>
+                                            ))}
+                                        </div>
+                                        <label className="upload-link-mini">
+                                            <Plus size={14} /> Upload Custom
+                                            <input type="file" hidden accept="image/*" onChange={handleFileUpload} />
+                                        </label>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+
+                        <div className="identity-right-stats">
+                            <div className="mini-stat-chip">
+                                <label>LEVEL</label>
+                                <span>{level}</span>
+                            </div>
+                            <div className="mini-stat-chip">
+                                <label>XP</label>
+                                <span>{totalXP.toLocaleString()}</span>
+                            </div>
+                            <div className="mini-stat-chip">
+                                <label>RANK</label>
+                                <span>{rank > 0 ? `#${rank}` : '--'}</span>
+                            </div>
+                            <div className="mini-stat-chip highlight">
+                                <label>STREAK</label>
+                                <span>{stats?.loginStreak || 1}D</span>
+                            </div>
+                        </div>
+                    </header>
+
+                    {/* Main Content Grid */}
+                    <div className="dashboard-main-grid">
+                        {/* Area 1: Cognitive Analysis (The Star) */}
+                        <div className="grid-area-ai">
+                            <div className="glass-panel cognitive-panel">
+                                <div className="panel-header">
+                                    <Brain className="panel-icon purple" size={20} />
+                                    <h2>Cognitive Learning Profile</h2>
+                                    {aiLoading && <Loader2 className="spinning loader-mini" size={14} />}
+                                </div>
+
+                                {aiInsights ? (
+                                    <div className="cognitive-content">
+                                        <div className="archetype-banner">
+                                            <label>Primary Archetype</label>
+                                            <h3>{aiInsights.learningStyle}</h3>
+                                        </div>
+                                        <div className="metrics-grid-mini">
+                                            <div className="m-card">
+                                                <span>Consistency</span>
+                                                <div className="m-bar"><div style={{ width: `${aiInsights.consistencyScore}%` }}></div></div>
+                                            </div>
+                                            <div className="m-card">
+                                                <span>Retention</span>
+                                                <div className="m-bar secondary"><div style={{ width: `${aiInsights.retentionScore}%` }}></div></div>
+                                            </div>
+                                        </div>
+                                        <div className="strength-pills">
+                                            {aiInsights.topicalStrengths?.map(s => <span key={s} className="v-pill">{s}</span>)}
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <div className="panel-placeholder">
+                                        <Activity size={24} />
+                                        <p>Expand your knowledge base to unlock DNA-level analytics.</p>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+
+                        {/* Area 2: Strategic Progress */}
+                        <div className="grid-area-meta">
+                            <div className="glass-panel progress-panel">
+                                <div className="panel-header">
+                                    <TrendingUp className="panel-icon amber" size={20} />
+                                    <h2>Advancement</h2>
+                                </div>
+                                <div className="xp-progress-complex">
+                                    <div className="xp-labels">
+                                        <span>Current: {totalXP} XP</span>
+                                        <span>Next: {nextLevelXP} XP</span>
+                                    </div>
+                                    <div className="xp-track-premium">
+                                        <div className="xp-fill-premium" style={{ width: `${progressToNext}%` }}></div>
+                                    </div>
+                                </div>
+                                <div className="strategic-tip">
+                                    <label>AI RECOMMENDATION</label>
+                                    <p>{aiInsights?.nextBigGoal || 'Start a new study session to get strategic guidance.'}</p>
+                                </div>
+                            </div>
+
+                            <div className="glass-panel badges-panel">
+                                <div className="panel-header">
+                                    <Award className="panel-icon blue" size={20} />
+                                    <h2>Hall of Fame</h2>
+                                </div>
+                                <div className="mini-badge-list">
+                                    {earnedBadges.slice(0, 3).map(b => (
+                                        <div key={b.id} className="badge-thumb-mini" title={b.name}>{b.icon}</div>
+                                    ))}
+                                    {earnedBadges.length > 3 && <div className="more-count">+{earnedBadges.length - 3}</div>}
+                                    {earnedBadges.length === 0 && <p className="no-badges">No trophies yet. Keep studying!</p>}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
 
-                <div className="profile-layout">
-                    {/* User Intro */}
-                    <div className="profile-card profile-hero" style={{ position: 'relative' }}>
-                        <div className="profile-avatar-large" style={{ cursor: 'pointer' }} onClick={() => setIsEditingAvatar(!isEditingAvatar)}>
-                            {currentAvatar}
-                            <div className="avatar-edit-overlay"><Camera size={14} /></div>
-                        </div>
+                <style>{`
+                    .profile-dashboard {
+                        padding: 2.5rem;
+                        max-width: 1100px;
+                        margin: 0 auto;
+                        display: flex;
+                        flex-direction: column;
+                        gap: 2rem;
+                        color: #fff;
+                    }
 
-                        {isEditingAvatar && (
-                            <div className="avatar-picker-popover fade-in">
-                                {AVATARS.map(a => (
-                                    <button key={a} className="avatar-choice" onClick={() => handleUpdateAvatar(a)}>{a}</button>
-                                ))}
-                            </div>
-                        )}
+                    .profile-identity-strip {
+                        display: flex;
+                        justify-content: space-between;
+                        align-items: center;
+                        background: rgba(255, 255, 255, 0.02);
+                        padding: 2rem;
+                        border-radius: 32px;
+                        border: 1px solid rgba(255, 255, 255, 0.05);
+                    }
 
-                        <div className="profile-info" style={{ flex: 1 }}>
-                            {isEditing ? (
-                                <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.5rem' }}>
-                                    <input 
-                                        value={tempName} 
-                                        onChange={(e) => setTempName(e.target.value)}
-                                        className="profile-edit-input"
-                                        placeholder="Display Name"
-                                    />
-                                    <button className="profile-edit-save" onClick={handleUpdateName}>Save</button>
-                                    <button className="profile-edit-cancel" onClick={() => setIsEditing(false)}>Cancel</button>
-                                </div>
-                            ) : (
-                                <h2 className="profile-name" style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-                                    {name}
-                                    <button className="profile-edit-btn" onClick={() => setIsEditing(true)}>Edit</button>
-                                </h2>
-                            )}
-                            <p className="profile-email">{user?.email}</p>
-                            <div className="profile-level-badge">
-                                <Shield size={14} /> Level {level}
-                            </div>
-                        </div>
-                    </div>
+                    .identity-left {
+                        display: flex;
+                        align-items: center;
+                        gap: 2rem;
+                        position: relative;
+                    }
 
-                    {/* Stats Grid */}
-                    <div className="profile-stats-grid">
-                        <div className="stat-card">
-                            <Zap className="stat-icon-xp" size={20} />
-                            <div className="stat-content">
-                                <span className="stat-label">Total XP</span>
-                                <span className="stat-value">{totalXP}</span>
-                            </div>
-                        </div>
-                        <div className="stat-card">
-                            <Trophy className="stat-icon-badges" size={20} />
-                            <div className="stat-content">
-                                <span className="stat-label">Leaderboard Rank</span>
-                                <span className="stat-value">{rank > 0 ? `#${rank}` : 'Unranked'}</span>
-                            </div>
-                        </div>
-                        <div className="stat-card">
-                            <Flame className="stat-icon-streak" size={20} />
-                            <div className="stat-content">
-                                <span className="stat-label">Day Streak</span>
-                                <span className="stat-value">{stats?.loginStreak || 1}</span>
-                            </div>
-                        </div>
-                    </div>
+                    .avatar-container-premium {
+                        display: flex;
+                        align-items: center;
+                        gap: 1.5rem;
+                    }
 
-                    {/* Level Progress */}
-                    <div className="profile-card">
-                        <div className="card-header-minimal">
-                            <h3>Level Progress</h3>
-                            <span className="text-muted">{totalXP % 100} / 100 XP to Level {level + 1}</span>
-                        </div>
-                        <div className="level-bar-container">
-                            <div className="level-bar-fill" style={{ width: `${progressToNext}%` }}></div>
-                        </div>
-                    </div>
+                    .avatar-hex-outer {
+                        width: 90px;
+                        height: 90px;
+                        position: relative;
+                        cursor: pointer;
+                        display: flex;
+                        align-items: center;
+                        justify-content: center;
+                        background: linear-gradient(135deg, #6366f1, #a855f7);
+                        border-radius: 24px;
+                    }
 
-                    {/* Badges Section */}
-                    <div className="profile-card">
-                        <div className="card-header-minimal">
-                            <h3>Achievements</h3>
-                        </div>
-                        <div className="badges-grid-premium">
-                            {earnedBadges.map(badge => (
-                                <div key={badge.id} className="badge-item-premium earned">
-                                    <div className="badge-icon-premium">{badge.icon}</div>
-                                    <div className="badge-details-premium">
-                                        <h4>{badge.name}</h4>
-                                        <p>{badge.description}</p>
-                                    </div>
-                                    <div className="badge-check-premium"><Target size={14} /></div>
-                                </div>
-                            ))}
-                            {unearnedBadges.map(badge => (
-                                <div key={badge.id} className="badge-item-premium locked">
-                                    <div className="badge-icon-premium">{badge.icon}</div>
-                                    <div className="badge-details-premium">
-                                        <h4>{badge.name}</h4>
-                                        <p>{badge.description}</p>
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
-                    </div>
+                    .avatar-img {
+                        width: 100%;
+                        height: 100%;
+                        object-fit: cover;
+                        border-radius: 24px;
+                    }
 
-                    {/* AI Insights Section */}
-                    <div className="profile-grid">
-                      <div className="profile-card">
-                        <div className="card-header-minimal">
-                          <h3 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                            <Brain size={18} style={{ color: 'var(--color-accent)' }} /> 
-                            AI Learning Profile
-                          </h3>
-                          {aiLoading && <Loader2 className="processing-spinner" size={14} />}
-                        </div>
-                        {aiInsights ? (
-                          <div className="focus-chart-mock">
-                             <div style={{ marginBottom: '1rem', padding: '0.75rem', background: 'var(--color-bg-secondary)', borderRadius: '12px', border: '1px solid var(--color-border)' }}>
-                                <div style={{ fontSize: '0.7rem', color: 'var(--color-text-muted)', textTransform: 'uppercase', marginBottom: '0.25rem' }}>Learning Style</div>
-                                <div style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--color-accent)' }}>{aiInsights.learningStyle}</div>
-                             </div>
+                    .avatar-emoji { font-size: 2.5rem; }
 
-                             <div className="focus-row">
-                              <span>Consistency</span>
-                              <div className="focus-bar"><div className="focus-bar-fill" style={{ width: `${aiInsights.consistencyScore || 50}%`, background: 'var(--color-accent)' }}></div></div>
-                              <span>{aiInsights.consistencyScore || 50}%</span>
-                            </div>
-                            <div className="focus-row">
-                              <span>Retention</span>
-                              <div className="focus-bar"><div className="focus-bar-fill" style={{ width: `${aiInsights.retentionScore || 50}%`, background: 'var(--color-accent-secondary)' }}></div></div>
-                              <span>{aiInsights.retentionScore || 50}%</span>
-                            </div>
+                    .hex-edit-overlay {
+                        position: absolute;
+                        top: 0; left: 0; right: 0; bottom: 0;
+                        background: rgba(0,0,0,0.4);
+                        display: flex;
+                        align-items: center;
+                        justify-content: center;
+                        opacity: 0;
+                        transition: opacity 0.2s;
+                        border-radius: 24px;
+                    }
 
-                            <div style={{ marginTop: '1rem' }}>
-                                <div style={{ fontSize: '0.7rem', color: 'var(--color-text-muted)', textTransform: 'uppercase', marginBottom: '0.5rem' }}>Topical Strengths</div>
-                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
-                                    {aiInsights.topicalStrengths?.map((s, i) => (
-                                        <span key={i} style={{ fontSize: '0.75rem', padding: '0.25rem 0.6rem', background: 'rgba(52,211,153,0.1)', color: '#34d399', borderRadius: '100px', border: '1px solid rgba(52,211,153,0.2)' }}>{s}</span>
-                                    ))}
-                                </div>
-                            </div>
-                          </div>
-                        ) : (
-                          <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--color-text-muted)', fontSize: '0.85rem' }}>
-                            <Activity size={24} style={{ opacity: 0.3, marginBottom: '0.5rem' }} />
-                            <p>{aiLoading ? 'Analyzing your progress...' : 'Complete sessions to unlock AI insights'}</p>
-                          </div>
-                        )}
-                      </div>
-                      
-                      <div className="profile-card">
-                        <div className="card-header-minimal">
-                          <h3 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                            <Target size={18} style={{ color: 'var(--color-warning)' }} /> 
-                            AI Growth Strategy
-                          </h3>
-                        </div>
-                        {aiInsights ? (
-                           <div className="milestones-list">
-                              <div className="milestone-item" style={{ flexDirection: 'column', alignItems: 'flex-start', border: 'none' }}>
-                                <div style={{ fontSize: '0.7rem', color: 'var(--color-text-muted)', textTransform: 'uppercase', marginBottom: '0.4rem' }}>Mastery Summary</div>
-                                <p style={{ fontSize: '0.85rem', lineHeight: 1.5, color: 'var(--color-text-primary)', margin: 0 }}>{aiInsights.masteryInsights}</p>
-                              </div>
-                              
-                              <div style={{ marginTop: '0.5rem', padding: '1rem', background: 'rgba(99,102,241,0.05)', borderRadius: '14px', border: '1px solid rgba(99,102,241,0.1)' }}>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
-                                    <Sparkles size={14} style={{ color: 'var(--color-accent)' }} />
-                                    <span style={{ fontSize: '0.7rem', fontWeight: 700, color: 'var(--color-accent)', textTransform: 'uppercase' }}>Next Major Goal</span>
-                                </div>
-                                <p style={{ fontSize: '0.875rem', fontWeight: 600, color: 'var(--color-text-primary)', margin: 0 }}>{aiInsights.nextBigGoal}</p>
-                              </div>
+                    .avatar-hex-outer:hover .hex-edit-overlay { opacity: 1; }
 
-                              <div style={{ marginTop: '0.5rem' }}>
-                                <div style={{ fontSize: '0.7rem', color: 'var(--color-text-muted)', textTransform: 'uppercase', marginBottom: '0.5rem' }}>Focus Required</div>
-                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
-                                    {aiInsights.improvementAreas?.map((a, i) => (
-                                        <span key={i} style={{ fontSize: '0.75rem', padding: '0.25rem 0.6rem', background: 'rgba(248,113,113,0.1)', color: '#f87171', borderRadius: '100px', border: '1px solid rgba(248,113,113,0.2)' }}>{a}</span>
-                                    ))}
-                                </div>
-                              </div>
-                           </div>
-                        ) : (
-                          <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--color-text-muted)', fontSize: '0.85rem' }}>
-                            <TrendingUp size={24} style={{ opacity: 0.3, marginBottom: '0.5rem' }} />
-                            <p>Unlock personalized goals by studying more topics</p>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                </div>
+                    .user-name-h1 {
+                        font-size: 2rem;
+                        font-weight: 800;
+                        display: flex;
+                        align-items: center;
+                        gap: 0.75rem;
+                        cursor: pointer;
+                        margin: 0;
+                    }
+
+                    .user-email-subtitle {
+                        color: rgba(255, 255, 255, 0.5);
+                        margin: 0;
+                        font-size: 0.9rem;
+                    }
+
+                    .identity-right-stats {
+                        display: flex;
+                        gap: 1rem;
+                    }
+
+                    .mini-stat-chip {
+                        background: rgba(255, 255, 255, 0.03);
+                        border: 1px solid rgba(255, 255, 255, 0.08);
+                        padding: 0.75rem 1.25rem;
+                        border-radius: 16px;
+                        min-width: 90px;
+                        display: flex;
+                        flex-direction: column;
+                    }
+
+                    .mini-stat-chip label { font-size: 0.6rem; font-weight: 800; color: rgba(255,255,255,0.4); letter-spacing: 0.1em; }
+                    .mini-stat-chip span { font-size: 1.2rem; font-weight: 800; }
+                    .mini-stat-chip.highlight { border-color: #f59e0b; color: #f59e0b; }
+
+                    .dashboard-main-grid {
+                        display: grid;
+                        grid-template-columns: 1.6fr 1fr;
+                        gap: 2rem;
+                    }
+
+                    .glass-panel {
+                        background: rgba(255, 255, 255, 0.03);
+                        backdrop-filter: blur(20px);
+                        border: 1px solid rgba(255, 255, 255, 0.06);
+                        border-radius: 32px;
+                        padding: 2rem;
+                    }
+
+                    .panel-header {
+                        display: flex;
+                        align-items: center;
+                        gap: 0.75rem;
+                        margin-bottom: 2rem;
+                    }
+
+                    .panel-header h2 { font-size: 1rem; font-weight: 700; margin: 0; text-transform: uppercase; letter-spacing: 0.05em; color: rgba(255,255,255,0.7); }
+                    .panel-icon.purple { color: #818cf8; }
+                    .panel-icon.amber { color: #f59e0b; }
+                    .panel-icon.blue { color: #0ea5e9; }
+
+                    .archetype-banner {
+                        margin-bottom: 2rem;
+                    }
+
+                    .archetype-banner label { font-size: 0.75rem; color: #818cf8; font-weight: 700; }
+                    .archetype-banner h3 { font-size: 2.2rem; font-weight: 900; margin: 0.25rem 0 0 0; }
+
+                    .metrics-grid-mini { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-bottom: 2rem; }
+                    .m-card span { font-size: 0.8rem; font-weight: 600; color: rgba(255,255,255,0.5); }
+                    .m-bar { height: 6px; background: rgba(255,255,255,0.05); border-radius: 10px; margin-top: 0.5rem; overflow: hidden; }
+                    .m-bar div { height: 100%; background: #6366f1; border-radius: 10px; }
+                    .m-bar.secondary div { background: #a855f7; }
+
+                    .strength-pills { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+                    .v-pill { background: rgba(99, 102, 241, 0.1); border: 1px solid rgba(99, 102, 241, 0.2); padding: 0.4rem 0.8rem; border-radius: 100px; font-size: 0.75rem; font-weight: 600; color: #818cf8; }
+
+                    .xp-progress-complex { margin-bottom: 2rem; }
+                    .xp-labels { display: flex; justify-content: space-between; font-size: 0.8rem; font-weight: 600; color: rgba(255,255,255,0.5); margin-bottom: 0.75rem; }
+                    .xp-track-premium { height: 10px; background: rgba(255,255,255,0.05); border-radius: 10px; overflow: hidden; }
+                    .xp-fill-premium { height: 100%; background: linear-gradient(90deg, #f59e0b, #6366f1); }
+
+                    .strategic-tip {
+                        background: rgba(245, 158, 11, 0.05);
+                        border: 1px solid rgba(245, 158, 11, 0.1);
+                        padding: 1.25rem;
+                        border-radius: 20px;
+                    }
+                    .strategic-tip label { display: block; font-size: 0.65rem; font-weight: 800; color: #f59e0b; margin-bottom: 0.5rem; }
+                    .strategic-tip p { font-size: 0.85rem; line-height: 1.5; margin: 0; color: rgba(255,255,255,0.8); }
+
+                    .grid-area-meta { display: flex; flex-direction: column; gap: 2rem; }
+
+                    .mini-badge-list { display: flex; gap: 1rem; align-items: center; }
+                    .badge-thumb-mini { font-size: 1.8rem; background: rgba(255,255,255,0.03); width: 50px; height: 50px; display: flex; align-items: center; justify-content: center; border-radius: 14px; }
+                    .more-count { font-size: 0.9rem; font-weight: 700; color: rgba(255,255,255,0.4); }
+
+                    .avatar-popover-minimal {
+                        position: absolute;
+                        top: 110%;
+                        left: 0;
+                        background: #111;
+                        border: 1px solid rgba(255,255,255,0.1);
+                        padding: 1rem;
+                        border-radius: 20px;
+                        z-index: 100;
+                        box-shadow: 0 20px 40px rgba(0,0,0,0.5);
+                    }
+
+                    .emoji-row-minimal { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.5rem; margin-bottom: 1rem; }
+                    .emoji-row-minimal button { font-size: 1.2rem; padding: 0.4rem; background: rgba(255,255,255,0.05); border: none; border-radius: 8px; cursor: pointer; transition: background 0.2s; }
+                    .emoji-row-minimal button:hover { background: rgba(99, 102, 241, 0.2); }
+
+                    .upload-link-mini { display: flex; align-items: center; gap: 0.5rem; font-size: 0.8rem; font-weight: 700; color: #818cf8; cursor: pointer; }
+
+                    .loader-mini { margin-left: auto; }
+                    .spinning { animation: spin 1s linear infinite; }
+                    @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+                    
+                    .spark-ico { color: #f59e0b; opacity: 0.6; }
+
+                    @media (max-width: 900px) {
+                        .dashboard-main-grid { grid-template-columns: 1fr; }
+                        .profile-identity-strip { flex-direction: column; gap: 1.5rem; align-items: flex-start; }
+                    }
+                `}</style>
             </main>
-
-            <style>{`
-                .profile-layout {
-                    display: flex;
-                    flex-direction: column;
-                    gap: 1.5rem;
-                    max-width: 900px;
-                }
-                .profile-card {
-                    background: var(--color-bg-card);
-                    border: 1px solid var(--color-border);
-                    border-radius: 20px;
-                    padding: 1.5rem;
-                }
-                .profile-hero {
-                    display: flex;
-                    align-items: center;
-                    gap: 2rem;
-                    background: linear-gradient(135deg, var(--color-bg-elevated), rgba(99, 102, 241, 0.1));
-                }
-                .profile-avatar-large {
-                    width: 100px;
-                    height: 100px;
-                    background: var(--color-accent);
-                    color: white;
-                    border-radius: 50%;
-                    display: flex;
-                    align-items: center;
-                    justify-content: center;
-                    font-size: 2.5rem;
-                    font-weight: 800;
-                    box-shadow: 0 10px 25px rgba(99, 102, 241, 0.4);
-                    border: 4px solid var(--color-bg-primary);
-                }
-                .profile-info h2 {
-                    font-size: 1.8rem;
-                    margin-bottom: 0.25rem;
-                }
-                .profile-email {
-                    color: var(--color-text-muted);
-                    margin-bottom: 1rem;
-                }
-                .profile-level-badge {
-                    display: inline-flex;
-                    align-items: center;
-                    gap: 0.5rem;
-                    background: var(--color-accent-light);
-                    color: var(--color-accent);
-                    padding: 0.4rem 1rem;
-                    border-radius: 100px;
-                    font-size: 0.85rem;
-                    font-weight: 700;
-                    border: 1px solid var(--color-accent-glow);
-                }
-                .profile-stats-grid {
-                    display: grid;
-                    grid-template-columns: repeat(3, 1fr);
-                    gap: 1.5rem;
-                }
-                .stat-card {
-                    background: var(--color-bg-card);
-                    border: 1px solid var(--color-border);
-                    border-radius: 20px;
-                    padding: 1.25rem;
-                    display: flex;
-                    align-items: center;
-                    gap: 1rem;
-                }
-                .stat-icon-xp { color: var(--color-warning); }
-                .stat-icon-streak { color: var(--color-error); }
-                .stat-icon-badges { color: var(--color-accent); }
-                .stat-label {
-                    display: block;
-                    font-size: 0.75rem;
-                    color: var(--color-text-muted);
-                    text-transform: uppercase;
-                    letter-spacing: 0.05em;
-                    font-weight: 600;
-                }
-                .stat-value {
-                    font-size: 1.5rem;
-                    font-weight: 800;
-                }
-                .card-header-minimal {
-                    display: flex;
-                    justify-content: space-between;
-                    align-items: center;
-                    margin-bottom: 1.25rem;
-                }
-                .level-bar-container {
-                    height: 10px;
-                    background: var(--color-bg-secondary);
-                    border-radius: 100px;
-                    overflow: hidden;
-                    border: 1px solid var(--color-border);
-                }
-                .level-bar-fill {
-                    height: 100%;
-                    background: linear-gradient(90deg, var(--color-accent), var(--color-accent-secondary));
-                    box-shadow: 0 0 10px var(--color-accent-glow);
-                    border-radius: 100px;
-                }
-                .badges-grid-premium {
-                    display: grid;
-                    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-                    gap: 1rem;
-                }
-                .badge-item-premium {
-                    display: flex;
-                    align-items: center;
-                    padding: 1rem;
-                    border-radius: 16px;
-                    border: 1px solid var(--color-border);
-                    position: relative;
-                }
-                .badge-item-premium.earned {
-                  background: var(--color-bg-elevated);
-                  border-color: var(--color-accent-glow);
-                }
-                .badge-item-premium.locked {
-                  opacity: 0.5;
-                  filter: grayscale(1);
-                  background: var(--color-bg-secondary);
-                }
-                .badge-icon-premium {
-                    font-size: 2rem;
-                    margin-right: 1rem;
-                }
-                .badge-details-premium h4 {
-                    font-size: 1rem;
-                    margin-bottom: 0.2rem;
-                }
-                .badge-details-premium p {
-                    font-size: 0.75rem;
-                    color: var(--color-text-muted);
-                }
-                .badge-check-premium {
-                    position: absolute;
-                    top: 0.75rem;
-                    right: 0.75rem;
-                    color: var(--color-success);
-                }
-                .profile-grid {
-                  display: grid;
-                  grid-template-columns: repeat(2, 1fr);
-                  gap: 1.5rem;
-                }
-                .focus-row {
-                  display: flex;
-                  align-items: center;
-                  gap: 1rem;
-                  margin-bottom: 1rem;
-                  font-size: 0.85rem;
-                }
-                .focus-row span:first-child { width: 80px; }
-                .focus-row span:last-child { width: 35px; text-align: right; font-weight: 600; }
-                .focus-bar {
-                  flex: 1;
-                  height: 6px;
-                  background: var(--color-bg-secondary);
-                  border-radius: 10px;
-                  overflow: hidden;
-                }
-                .focus-bar-fill {
-                  height: 100%;
-                  border-radius: 10px;
-                }
-                .milestones-list {
-                  display: flex;
-                  flex-direction: column;
-                  gap: 1rem;
-                }
-                .milestone-item {
-                  display: flex;
-                  align-items: center;
-                  gap: 0.75rem;
-                  font-size: 0.85rem;
-                  padding-bottom: 0.75rem;
-                  border-bottom: 1px solid var(--color-border-light);
-                }
-                .milestone-item:last-child { border: none; }
-                .text-accent { color: var(--color-accent); }
-                .profile-edit-btn {
-                  font-size: 0.7rem;
-                  padding: 0.2rem 0.6rem;
-                  background: var(--color-bg-secondary);
-                  border: 1px solid var(--color-border);
-                  border-radius: 6px;
-                  color: var(--color-text-muted);
-                  cursor: pointer;
-                  font-weight: 500;
-                }
-                .profile-edit-btn:hover { background: var(--color-bg-elevated); color: var(--color-text-primary); }
-                .profile-edit-input {
-                  background: var(--color-bg-primary);
-                  border: 1px solid var(--color-accent);
-                  border-radius: 10px;
-                  padding: 0.6rem 1rem;
-                  color: var(--color-text-primary);
-                  font-family: inherit;
-                  font-size: 1.1rem;
-                  font-weight: 700;
-                  width: 250px;
-                }
-                .profile-edit-save {
-                  background: var(--color-accent);
-                  color: white;
-                  border: none;
-                  border-radius: 10px;
-                  padding: 0 1rem;
-                  font-weight: 600;
-                  cursor: pointer;
-                }
-                .profile-edit-cancel {
-                  background: transparent;
-                  color: var(--color-text-muted);
-                  border: 1px solid var(--color-border);
-                  border-radius: 10px;
-                  padding: 0 1rem;
-                  font-weight: 600;
-                  cursor: pointer;
-                }
-                .avatar-edit-overlay {
-                  position: absolute;
-                  bottom: -2px;
-                  right: -2px;
-                  background: var(--color-accent);
-                  padding: 4px;
-                  border-radius: 50%;
-                  display: flex;
-                  border: 2px solid var(--color-bg-card);
-                }
-                .avatar-picker-popover {
-                  position: absolute;
-                  top: 120px;
-                  left: 1.5rem;
-                  background: var(--color-bg-elevated);
-                  border: 1px solid var(--color-border);
-                  border-radius: 16px;
-                  padding: 0.75rem;
-                  display: grid;
-                  grid-template-columns: repeat(4, 1fr);
-                  gap: 0.5rem;
-                  z-index: 100;
-                  box-shadow: 0 10px 40px rgba(0,0,0,0.3);
-                }
-                .avatar-choice {
-                  font-size: 1.5rem;
-                  width: 40px;
-                  height: 40px;
-                  display: flex;
-                  align-items: center;
-                  justify-content: center;
-                  background: transparent;
-                  border: none;
-                  border-radius: 8px;
-                  cursor: pointer;
-                  transition: transform 0.2s;
-                }
-                .avatar-choice:hover {
-                  background: var(--color-bg-secondary);
-                  transform: scale(1.1);
-                }
-            `}</style>
         </div>
     )
 }

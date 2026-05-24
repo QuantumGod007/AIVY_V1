@@ -13,7 +13,9 @@ import {
     collection, query, orderBy, limit,
     getDocs, onSnapshot, serverTimestamp
 } from 'firebase/firestore'
-import { db, auth } from '../firebase'
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage'
+import { updateProfile } from 'firebase/auth'
+import { db, auth, storage } from '../firebase'
 
 // ─── XP Constants ─────────────────────────────────────────────────────────────
 
@@ -88,7 +90,7 @@ function getDisplayName() {
  * Write/update the flat leaderboard/{uid} doc with latest XP and badges.
  * Called after every XP award — keeps leaderboard queryable in one snapshot.
  */
-async function syncLeaderboardEntry(userId, totalXP, badges, avatar = '') {
+async function syncLeaderboardEntry(userId, totalXP, badges, avatar = '', forceName = '') {
     try {
         const user = auth.currentUser
         const ref = doc(db, 'leaderboard', userId)
@@ -102,7 +104,7 @@ async function syncLeaderboardEntry(userId, totalXP, badges, avatar = '') {
 
         await setDoc(ref, {
             userId,
-            name: user?.displayName || user?.email?.split('@')[0] || 'Student',
+            name: forceName || user?.displayName || user?.email?.split('@')[0] || 'Student',
             email: user?.email || '',
             totalXP,
             avatar: finalAvatar,
@@ -124,22 +126,53 @@ export async function updateUserProfile(newName, avatar = '') {
         const user = auth.currentUser
         if (!user) throw new Error('Not authenticated')
         
-        const { updateProfile } = require('firebase/auth')
-        await updateProfile(user, { displayName: newName })
+        // Update Firebase Auth Profile
+        // Note: avatar can now be an emoji OR a URL string
+        const profileData = { displayName: newName }
+        if (avatar && avatar.startsWith('http')) {
+            profileData.photoURL = avatar
+        }
+        
+        await updateProfile(user, profileData)
         
         const statsRef = doc(db, 'users', user.uid, 'gamification', 'stats')
-        await setDoc(statsRef, { avatar }, { merge: true })
+        await setDoc(statsRef, { 
+            avatar: avatar,
+            displayName: newName
+        }, { merge: true })
 
         // Propagate to leaderboard entry immediately
         const stats = await getUserStats()
         if (stats) {
-            await syncLeaderboardEntry(user.uid, stats.totalXP || 0, stats.badges || [], avatar)
+            await syncLeaderboardEntry(user.uid, stats.totalXP || 0, stats.badges || [], avatar, newName)
         }
         
         return true
     } catch (err) {
         console.error('updateUserProfile error:', err)
         return false
+    }
+}
+
+/**
+ * Upload profile image to Firebase Storage
+ */
+export async function uploadProfileImage(file) {
+    try {
+        const user = auth.currentUser
+        if (!user) throw new Error('Not authenticated')
+
+        const storageRef = ref(storage, `users/${user.uid}/profile_${Date.now()}`)
+        await uploadBytes(storageRef, file)
+        const downloadURL = await getDownloadURL(storageRef)
+        
+        // After upload, update profile with this URL
+        await updateUserProfile(user.displayName, downloadURL)
+        
+        return downloadURL
+    } catch (err) {
+        console.error('uploadProfileImage error:', err)
+        throw err
     }
 }
 
