@@ -484,7 +484,7 @@ priorityTopics must reference actual topics from the document content above`
  * @param {object} studyGuidance - Result from generateStudyGuidance
  * @returns {Promise<Array>} Array of quiz question objects with difficulty tags
  */
-export async function generateAdaptiveQuiz(documentText, surveyQuestions, surveyAnswers, studyGuidance) {
+export async function generateAdaptiveQuiz(documentText, surveyQuestions, surveyAnswers, studyGuidance, questionCount = 10) {
     try {
 
         const weakTopics = surveyQuestions
@@ -496,12 +496,13 @@ export async function generateAdaptiveQuiz(documentText, surveyQuestions, survey
             ? studyGuidance.priorityTopics
             : ['Core concepts', 'Key definitions', 'Applications']
 
+        const n = questionCount
         const difficultyDistribution =
-            learnerLevel === 'Beginner'  ? '5 easy, 4 medium, 1 hard' :
-            learnerLevel === 'Advanced'  ? '1 easy, 3 medium, 6 hard' :
-                                          '2 easy, 5 medium, 3 hard'
+            learnerLevel === 'Beginner'  ? `${Math.round(n*0.5)} easy, ${Math.round(n*0.4)} medium, ${Math.round(n*0.1)} hard` :
+            learnerLevel === 'Advanced'  ? `${Math.round(n*0.1)} easy, ${Math.round(n*0.3)} medium, ${Math.round(n*0.6)} hard` :
+                                          `${Math.round(n*0.2)} easy, ${Math.round(n*0.5)} medium, ${Math.round(n*0.3)} hard`
 
-        const prompt = `You are an adaptive exam creator. Generate a personalized 10-question quiz for a ${learnerLevel}-level learner.
+        const prompt = `You are an adaptive exam creator. Generate a personalized ${questionCount}-question quiz for a ${learnerLevel}-level learner.
 
 Study Material:
 ${documentText ? documentText.substring(0, 30000) : 'General academic content.'}
@@ -536,7 +537,7 @@ Respond ONLY with valid JSON:
   ]
 }
 
-Generate exactly 10 questions.`
+Generate exactly ${questionCount} questions.`
 
         const text_resp = await callGeminiProxy(prompt);
         const data = extractJSON(text_resp);

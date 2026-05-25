@@ -3,9 +3,9 @@ import { useNavigate } from 'react-router-dom'
 import { onAuthStateChanged } from 'firebase/auth'
 import { auth } from '../firebase'
 import { getCurrentQuiz, saveCurrentQuiz, saveQuizResults } from '../services/storageService'
-import { generateStudyGuidance } from '../services/geminiService'
+import { generateStudyGuidance, generateNextDynamicQuestion } from '../services/geminiService'
 import { awardSurveyXP, awardQuizXP } from '../services/gamificationService'
-import { ArrowLeft, ArrowRight, Check, Circle, Sun, Moon, Zap, BookOpen, Shield, Flame } from 'lucide-react'
+import { ArrowLeft, ArrowRight, Check, Circle, Sun, Moon, Zap, BookOpen, Shield, Flame, Loader2 } from 'lucide-react'
 
 // ─── Difficulty badge ──────────────────────────────────────────────────────────
 const DIFFICULTY_CONFIG = {
@@ -40,6 +40,10 @@ function Quiz() {
     const [loading, setLoading] = useState(true)
     const [submitting, setSubmitting] = useState(false)
     const [isRecovery, setIsRecovery] = useState(false)
+    // Adaptive real-time state
+    const [localQuestions, setLocalQuestions] = useState([])
+    const [nextQLoading, setNextQLoading] = useState(false)
+    const [currentDifficulty, setCurrentDifficulty] = useState('medium')
     const navigate = useNavigate()
 
     const [theme, setTheme] = useState(() => localStorage.getItem('theme') || 'dark')
@@ -61,6 +65,8 @@ function Quiz() {
                     return
                 }
                 setQuizData(quiz)
+                setLocalQuestions(quiz.questions || [])
+                setCurrentDifficulty(quiz.questions?.[0]?.difficulty || 'medium')
                 setIsRecovery(!!quiz.isRecoveryQuiz)
                 // documentText cached in Firestore via getCurrentQuiz — no localStorage needed
             } catch (error) {
@@ -86,7 +92,7 @@ function Quiz() {
         )
     }
 
-    const questions = quizData.questions || []
+    const questions = localQuestions.length > 0 ? localQuestions : (quizData?.questions || [])
     const totalQuestions = questions.length
 
     // Guard: no valid questions
@@ -96,7 +102,8 @@ function Quiz() {
     }
 
     const currentQ = questions[currentQuestion] || {}
-    const isPrerequisiteSurvey = !!quizData.isPrerequisiteSurvey  // must be in component scope — used in render
+    const isPrerequisiteSurvey = !!quizData.isPrerequisiteSurvey
+    const isAdaptive = !!quizData.isAdaptive
     const isLastQuestion = currentQuestion === totalQuestions - 1
     const isFirstQuestion = currentQuestion === 0
     const answeredCount = Object.keys(selectedAnswers).length
@@ -110,7 +117,35 @@ function Quiz() {
     const runningAccuracy = answeredCount > 0 ? Math.round((correct / answeredCount) * 100) : null
 
     const handleOptionSelect = (optionIndex) => {
-        setSelectedAnswers({ ...selectedAnswers, [currentQuestion]: optionIndex })
+        const newAnswers = { ...selectedAnswers, [currentQuestion]: optionIndex }
+        setSelectedAnswers(newAnswers)
+        // Adaptive mode: prefetch next question in background as soon as user picks an answer
+        if (isAdaptive && !isPrerequisiteSurvey) {
+            const nextIdx = currentQuestion + 1
+            if (nextIdx < questions.length && !nextQLoading) {
+                const answeredSoFar = questions.slice(0, currentQuestion + 1)
+                let correctCount = 0
+                answeredSoFar.forEach((q, i) => {
+                    const ans = i === currentQuestion ? optionIndex : selectedAnswers[i]
+                    if (ans === q.correctAnswer) correctCount++
+                })
+                const accuracy = answeredSoFar.length > 0 ? Math.round((correctCount / answeredSoFar.length) * 100) : 50
+                setNextQLoading(true)
+                generateNextDynamicQuestion(quizData.documentText || '', answeredSoFar, accuracy, currentDifficulty)
+                    .then(nextQ => {
+                        if (nextQ) {
+                            setLocalQuestions(prev => {
+                                const updated = [...prev]
+                                updated[nextIdx] = nextQ
+                                return updated
+                            })
+                            setCurrentDifficulty(nextQ.difficulty || currentDifficulty)
+                        }
+                    })
+                    .catch(err => console.warn('Adaptive prefetch failed, keeping pre-generated:', err.message))
+                    .finally(() => setNextQLoading(false))
+            }
+        }
     }
 
     const handleNext = () => {
@@ -131,7 +166,10 @@ function Quiz() {
             const isPrerequisiteSurvey = quizData.isPrerequisiteSurvey
             const updatedQuiz = {
                 ...quizData,
+                questions: localQuestions, // save adaptive-generated questions
                 userAnswers: selectedAnswers,
+                score: correct,
+                accuracy: Math.round((correct / totalQuestions) * 100),
                 completedAt: new Date().toISOString()
             }
 
@@ -176,15 +214,14 @@ function Quiz() {
         }
     }
 
-    // Adaptive notification based on current performance
+    // Adaptive notification
     const getAdaptiveFeedback = () => {
         if (currentQuestion < 3) return null
-        if (runningAccuracy >= 90) return { text: "CRUSHING IT! 🔥 Questions are scaling up.", color: "var(--color-accent)" }
-        if (runningAccuracy <= 40) return { text: "Don't worry, AIVY is adjusting level... 🛡️", color: "var(--color-warning)" }
+        if (runningAccuracy >= 90) return { text: "CRUSHING IT! 🔥 Scaling up difficulty.", color: "var(--color-accent)" }
+        if (runningAccuracy <= 40) return { text: "AIVY is easing the difficulty... 🛡️", color: "var(--color-warning)" }
         return null
     }
-
-    const adaptiveFeedback = getAdaptiveFeedback()
+    const adaptiveFeedback = isAdaptive ? getAdaptiveFeedback() : null
 
     return (
         <div className="quiz-page fade-in">
@@ -200,8 +237,18 @@ function Quiz() {
                             background: isRecovery ? 'linear-gradient(135deg,#f59e0b,#d97706)' : undefined
                         }}>
                             {isRecovery ? '⚡ Recovery Quiz' :
-                             quizData.isPrerequisiteSurvey ? 'Prerequisite Survey' : 'Adaptive Quiz'}
+                             isPrerequisiteSurvey ? 'Prerequisite Survey' :
+                             isAdaptive ? '⚡ Adaptive Quiz' : 'Quiz'}
                         </span>
+                        {/* Live adaptive indicator */}
+                        {isAdaptive && !isPrerequisiteSurvey && (
+                            <span style={{
+                                fontSize: '0.7rem', fontWeight: 700,
+                                padding: '0.2rem 0.65rem', borderRadius: '100px',
+                                background: 'rgba(99,102,241,0.15)', color: 'var(--color-accent)',
+                                border: '1px solid rgba(99,102,241,0.3)'
+                            }}>⚡ Live Adaptive</span>
+                        )}
                         {/* Running accuracy pill */}
                         {runningAccuracy !== null && !isPrerequisiteSurvey && (
                             <span style={{
@@ -332,8 +379,11 @@ function Quiz() {
                             {submitting ? 'Submitting...' : 'Submit'}
                         </button>
                     ) : (
-                        <button onClick={handleNext} className="btn btn-primary btn-icon">
-                            Next <ArrowRight size={18} />
+                        <button onClick={handleNext} className="btn btn-primary btn-icon"
+                            disabled={nextQLoading && isAdaptive && currentAnswer !== undefined}>
+                            {nextQLoading && isAdaptive && currentAnswer !== undefined
+                                ? <><Loader2 size={15} className="processing-spinner" /> Adapting...</>
+                                : <>Next <ArrowRight size={18} /></>}
                         </button>
                     )}
                 </div>

@@ -68,6 +68,8 @@ function Dashboard() {
   const [pastedText, setPastedText] = useState('')
   const [allSessions, setAllSessions] = useState([])
   const [showSwitcher, setShowSwitcher] = useState(false)
+  const [questionCount, setQuestionCount] = useState(10)
+  const [quizMode, setQuizMode] = useState('fixed') // 'fixed' | 'adaptive'
 
   const navigate = useNavigate()
   const user = auth.currentUser
@@ -270,7 +272,8 @@ function Dashboard() {
     navigate('/quiz')
   }
 
-  const handleStartAdaptiveQuiz = async () => {
+  const handleStartAdaptiveQuiz = async (count, isAdaptive = false) => {
+    const numQuestions = count || questionCount
     try {
       setIsProcessing(true)
       setProcessingStage('Generating adaptive quiz based on your performance...')
@@ -299,7 +302,8 @@ function Dashboard() {
         currentQuiz?.documentText || '',
         surveyQuestions,
         surveyAnswers,
-        guidance
+        guidance,
+        numQuestions
       )
 
       if (!adaptiveQuestions || adaptiveQuestions.length === 0) {
@@ -311,6 +315,7 @@ function Dashboard() {
         documentText: currentQuiz?.documentText || '',
         questions: adaptiveQuestions,
         isPrerequisiteSurvey: false,
+        isAdaptive: isAdaptive,
         studyGuidance: guidance,
         userAnswers: {},
         completedAt: null
@@ -680,9 +685,50 @@ function Dashboard() {
             )}
 
             {isState(DASHBOARD_STATES.SURVEY_COMPLETED) && (
-              <button className="btn btn-primary btn-icon db-main-btn" onClick={handleStartAdaptiveQuiz} disabled={isProcessing}>
-                {isProcessing ? <><Loader2 className="processing-spinner" size={18}/> Generating...</> : <><Sparkles size={18}/>Start Adaptive Quiz</>}
-              </button>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                {/* Mode selector */}
+                <div style={{ display: 'flex', gap: '0.5rem' }}>
+                  {[{ key: 'fixed', label: '📋 Fixed', desc: 'Pick # of questions' }, { key: 'adaptive', label: '⚡ Adaptive', desc: 'Real-time difficulty' }].map(m => (
+                    <button key={m.key} onClick={() => setQuizMode(m.key)} style={{
+                      flex: 1, padding: '0.55rem 0.5rem', border: '1.5px solid',
+                      borderColor: quizMode === m.key ? 'var(--color-accent)' : 'var(--color-border)',
+                      borderRadius: '10px', background: quizMode === m.key ? 'rgba(99,102,241,0.12)' : 'transparent',
+                      cursor: 'pointer', fontFamily: 'inherit', transition: 'all 0.15s ease', textAlign: 'center'
+                    }}>
+                      <div style={{ fontSize: '0.8rem', fontWeight: 700, color: quizMode === m.key ? 'var(--color-accent)' : 'var(--color-text-primary)' }}>{m.label}</div>
+                      <div style={{ fontSize: '0.62rem', color: 'var(--color-text-muted)', marginTop: '0.1rem' }}>{m.desc}</div>
+                    </button>
+                  ))}
+                </div>
+                {/* Count picker — Fixed only */}
+                {quizMode === 'fixed' && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                    <span style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)', fontWeight: 500, whiteSpace: 'nowrap' }}>Questions:</span>
+                    <div style={{ display: 'flex', gap: '0.4rem', flex: 1 }}>
+                      {[5, 10, 15, 20].map(n => (
+                        <button key={n} onClick={() => setQuestionCount(n)} style={{
+                          flex: 1, padding: '0.4rem 0', border: '1.5px solid',
+                          borderColor: questionCount === n ? 'var(--color-accent)' : 'var(--color-border)',
+                          borderRadius: '8px', background: questionCount === n ? 'rgba(99,102,241,0.12)' : 'transparent',
+                          color: questionCount === n ? 'var(--color-accent)' : 'var(--color-text-muted)',
+                          fontWeight: questionCount === n ? 700 : 400, fontSize: '0.8rem',
+                          cursor: 'pointer', transition: 'all 0.15s ease', fontFamily: 'inherit'
+                        }}>{n}</button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {quizMode === 'adaptive' && (
+                  <div style={{ fontSize: '0.73rem', color: 'var(--color-text-muted)', padding: '0.5rem 0.75rem', background: 'rgba(99,102,241,0.06)', borderRadius: '8px', border: '1px solid rgba(99,102,241,0.15)' }}>
+                    ⚡ 10 questions · Difficulty adjusts after each answer in real-time
+                  </div>
+                )}
+                <button className="btn btn-primary btn-icon db-main-btn" onClick={() => handleStartAdaptiveQuiz(quizMode === 'fixed' ? questionCount : 10, quizMode === 'adaptive')} disabled={isProcessing}>
+                  {isProcessing ? <><Loader2 className="processing-spinner" size={18}/> Generating...</> :
+                   quizMode === 'adaptive' ? <><Activity size={18}/>Start Adaptive Quiz ⚡</> :
+                   <><Sparkles size={18}/>Start Quiz ({questionCount} Qs)</>}
+                </button>
+              </div>
             )}
 
             {isState(DASHBOARD_STATES.QUIZ_IN_PROGRESS) && (
@@ -692,9 +738,38 @@ function Dashboard() {
             )}
 
             {isState(DASHBOARD_STATES.QUIZ_COMPLETED) && (
-              <div className="db-action-btns">
+              <div className="db-action-btns" style={{ flexDirection: 'column', gap: '0.75rem' }}>
                 <button className="btn btn-primary btn-icon" onClick={() => navigate('/progress')}><BarChart3 size={18}/>View Results</button>
-                <button className="btn btn-secondary btn-icon" onClick={handleStartAdaptiveQuiz} disabled={isProcessing}><RefreshCw size={18}/>New Quiz</button>
+                <div style={{ display: 'flex', gap: '0.5rem' }}>
+                  {[{ key: 'fixed', label: '📋 Fixed', desc: 'Pick # of Qs' }, { key: 'adaptive', label: '⚡ Adaptive', desc: 'Real-time AI' }].map(m => (
+                    <button key={m.key} onClick={() => setQuizMode(m.key)} style={{
+                      flex: 1, padding: '0.45rem 0.4rem', border: '1.5px solid',
+                      borderColor: quizMode === m.key ? 'var(--color-accent)' : 'var(--color-border)',
+                      borderRadius: '10px', background: quizMode === m.key ? 'rgba(99,102,241,0.12)' : 'transparent',
+                      cursor: 'pointer', fontFamily: 'inherit', transition: 'all 0.15s ease', textAlign: 'center'
+                    }}>
+                      <div style={{ fontSize: '0.75rem', fontWeight: 700, color: quizMode === m.key ? 'var(--color-accent)' : 'var(--color-text-primary)' }}>{m.label}</div>
+                      <div style={{ fontSize: '0.6rem', color: 'var(--color-text-muted)' }}>{m.desc}</div>
+                    </button>
+                  ))}
+                </div>
+                {quizMode === 'fixed' && (
+                  <div style={{ display: 'flex', gap: '0.4rem' }}>
+                    {[5, 10, 15, 20].map(n => (
+                      <button key={n} onClick={() => setQuestionCount(n)} style={{
+                        flex: 1, padding: '0.4rem 0', border: '1.5px solid',
+                        borderColor: questionCount === n ? 'var(--color-accent)' : 'var(--color-border)',
+                        borderRadius: '8px', background: questionCount === n ? 'rgba(99,102,241,0.12)' : 'transparent',
+                        color: questionCount === n ? 'var(--color-accent)' : 'var(--color-text-muted)',
+                        fontWeight: questionCount === n ? 700 : 400, fontSize: '0.8rem',
+                        cursor: 'pointer', transition: 'all 0.15s ease', fontFamily: 'inherit'
+                      }}>{n}</button>
+                    ))}
+                  </div>
+                )}
+                <button className="btn btn-secondary btn-icon" onClick={() => handleStartAdaptiveQuiz(quizMode === 'fixed' ? questionCount : 10, quizMode === 'adaptive')} disabled={isProcessing}>
+                  <RefreshCw size={16}/>{quizMode === 'adaptive' ? 'New Adaptive Quiz ⚡' : `New Quiz (${questionCount} Qs)`}
+                </button>
               </div>
             )}
 
@@ -844,7 +919,25 @@ function Dashboard() {
           )}
 
           {/* Intelligence Hub / Recent Sessions Quick Access */}
-          {allSessions.length > 0 && (
+          {(() => {
+            // Build hub list: current active first, then unique archived sessions (exclude active)
+            const hubItems = []
+            if (currentQuiz?.documentName && !isState(DASHBOARD_STATES.NO_DOCUMENT)) {
+              hubItems.push({
+                id: 'current-active',
+                documentName: currentQuiz.documentName,
+                archivedAt: null,
+                accuracy: currentQuiz.score != null && currentQuiz.questions?.length > 0
+                  ? Math.round((currentQuiz.score / currentQuiz.questions.length) * 100)
+                  : null,
+                isCurrentActive: true
+              })
+            }
+            allSessions.forEach(s => {
+              if (s.documentName !== currentQuiz?.documentName) hubItems.push(s)
+            })
+            if (hubItems.length === 0) return null
+            return (
             <div style={{
               background: 'var(--color-bg-card)',
               border: '1px solid var(--color-border)',
@@ -875,12 +968,12 @@ function Dashboard() {
 
               {/* List */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-                {allSessions.slice(0, 3).map((session, i) => {
-                  const isActive = session.documentName === getActiveContextName()
+                {hubItems.slice(0, 3).map((session, i) => {
+                  const isActive = session.isCurrentActive || session.documentName === getActiveContextName()
                   return (
                     <button
                       key={session.id}
-                      onClick={() => handleRestoreSession(session.id)}
+                      onClick={() => session.isCurrentActive ? navigate('/quiz') : handleRestoreSession(session.id)}
                       style={{
                         display: 'flex',
                         alignItems: 'center',
@@ -912,7 +1005,7 @@ function Dashboard() {
                           </div>
                           <div style={{ fontSize: '0.65rem', color: 'var(--color-text-muted)', marginTop: '0.1rem', display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
                             <History size={10} /> 
-                            {new Date(session.updatedAt || session.id).toLocaleDateString([], { month: 'short', day: 'numeric' })}
+                            {session.isCurrentActive ? 'Active now' : session.archivedAt ? new Date(session.archivedAt).toLocaleDateString([], { month: 'short', day: 'numeric' }) : 'Saved'}
                             {isActive && <span style={{ color: 'var(--color-accent)', fontWeight: 800, marginLeft: '0.3rem' }}>· ACTIVE</span>}
                           </div>
                         </div>
@@ -920,7 +1013,7 @@ function Dashboard() {
                       
                       <div style={{ textAlign: 'right', flexShrink: 0 }}>
                         <div style={{ fontSize: '0.85rem', fontWeight: 800, color: 'var(--color-text-primary)' }}>
-                          {session.lastStats?.accuracy || 0}%
+                          {session.accuracy != null ? `${session.accuracy}%` : '—'}
                         </div>
                         <div style={{ fontSize: '0.6rem', color: 'var(--color-text-muted)', textTransform: 'uppercase', fontWeight: 600 }}>Accuracy</div>
                       </div>
@@ -929,7 +1022,8 @@ function Dashboard() {
                 })}
               </div>
             </div>
-          )}
+            )
+          })()}
         </div>
       </div>
 
