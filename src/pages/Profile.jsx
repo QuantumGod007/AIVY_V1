@@ -65,22 +65,31 @@ function Profile() {
                 setStats(statsData)
                 setSessions(sessionData)
                 setRank(currentRank)
-
-                // If sessions exist, triggers AI analysis
-                if (sessionData.length > 0) {
-                    setAiLoading(true)
-                    const insights = await analyzeGlobalProgress(sessionData, statsData)
-                    setAiInsights(insights)
-                    setAiLoading(false)
-                }
             } catch (err) {
                 console.error('Profile load error:', err)
             } finally {
-                setLoading(false)
+                setLoading(false) // ← unblock UI immediately after basic data
             }
         }
         loadAllData()
     }, [])
+
+    // AI analysis runs separately in background — never blocks page load
+    useEffect(() => {
+        if (!sessions.length || !stats) return
+        const runAI = async () => {
+            setAiLoading(true)
+            try {
+                const insights = await analyzeGlobalProgress(sessions, stats)
+                setAiInsights(insights)
+            } catch (err) {
+                console.warn('AI insights failed silently:', err)
+            } finally {
+                setAiLoading(false)
+            }
+        }
+        runAI()
+    }, [sessions.length, stats?.totalXP])
 
     const handleUpdateName = async () => {
         if (!tempName.trim()) return
