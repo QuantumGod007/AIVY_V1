@@ -700,32 +700,25 @@ function Dashboard() {
                     </button>
                   ))}
                 </div>
-                {/* Count picker — Fixed only */}
-                {quizMode === 'fixed' && (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                    <span style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)', fontWeight: 500, whiteSpace: 'nowrap' }}>Questions:</span>
-                    <div style={{ display: 'flex', gap: '0.4rem', flex: 1 }}>
-                      {[5, 10, 15, 20].map(n => (
-                        <button key={n} onClick={() => setQuestionCount(n)} style={{
-                          flex: 1, padding: '0.4rem 0', border: '1.5px solid',
-                          borderColor: questionCount === n ? 'var(--color-accent)' : 'var(--color-border)',
-                          borderRadius: '8px', background: questionCount === n ? 'rgba(99,102,241,0.12)' : 'transparent',
-                          color: questionCount === n ? 'var(--color-accent)' : 'var(--color-text-muted)',
-                          fontWeight: questionCount === n ? 700 : 400, fontSize: '0.8rem',
-                          cursor: 'pointer', transition: 'all 0.15s ease', fontFamily: 'inherit'
-                        }}>{n}</button>
-                      ))}
-                    </div>
+                {/* Count picker — always visible */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                  <span style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)', fontWeight: 500, whiteSpace: 'nowrap' }}>Questions:</span>
+                  <div style={{ display: 'flex', gap: '0.4rem', flex: 1 }}>
+                    {[5, 10, 15, 20].map(n => (
+                      <button key={n} onClick={() => setQuestionCount(n)} style={{
+                        flex: 1, padding: '0.4rem 0', border: '1.5px solid',
+                        borderColor: questionCount === n ? 'var(--color-accent)' : 'var(--color-border)',
+                        borderRadius: '8px', background: questionCount === n ? 'rgba(99,102,241,0.12)' : 'transparent',
+                        color: questionCount === n ? 'var(--color-accent)' : 'var(--color-text-muted)',
+                        fontWeight: questionCount === n ? 700 : 400, fontSize: '0.8rem',
+                        cursor: 'pointer', transition: 'all 0.15s ease', fontFamily: 'inherit'
+                      }}>{n}</button>
+                    ))}
                   </div>
-                )}
-                {quizMode === 'adaptive' && (
-                  <div style={{ fontSize: '0.73rem', color: 'var(--color-text-muted)', padding: '0.5rem 0.75rem', background: 'rgba(99,102,241,0.06)', borderRadius: '8px', border: '1px solid rgba(99,102,241,0.15)' }}>
-                    ⚡ 10 questions · Difficulty adjusts after each answer in real-time
-                  </div>
-                )}
-                <button className="btn btn-primary btn-icon db-main-btn" onClick={() => handleStartAdaptiveQuiz(quizMode === 'fixed' ? questionCount : 10, quizMode === 'adaptive')} disabled={isProcessing}>
+                </div>
+                <button className="btn btn-primary btn-icon db-main-btn" onClick={() => handleStartAdaptiveQuiz(questionCount, quizMode === 'adaptive')} disabled={isProcessing}>
                   {isProcessing ? <><Loader2 className="processing-spinner" size={18}/> Generating...</> :
-                   quizMode === 'adaptive' ? <><Activity size={18}/>Start Adaptive Quiz ⚡</> :
+                   quizMode === 'adaptive' ? <><Activity size={18}/>Start Adaptive Quiz ({questionCount} Qs) ⚡</> :
                    <><Sparkles size={18}/>Start Quiz ({questionCount} Qs)</>}
                 </button>
               </div>
@@ -753,22 +746,20 @@ function Dashboard() {
                     </button>
                   ))}
                 </div>
-                {quizMode === 'fixed' && (
-                  <div style={{ display: 'flex', gap: '0.4rem' }}>
-                    {[5, 10, 15, 20].map(n => (
-                      <button key={n} onClick={() => setQuestionCount(n)} style={{
-                        flex: 1, padding: '0.4rem 0', border: '1.5px solid',
-                        borderColor: questionCount === n ? 'var(--color-accent)' : 'var(--color-border)',
-                        borderRadius: '8px', background: questionCount === n ? 'rgba(99,102,241,0.12)' : 'transparent',
-                        color: questionCount === n ? 'var(--color-accent)' : 'var(--color-text-muted)',
-                        fontWeight: questionCount === n ? 700 : 400, fontSize: '0.8rem',
-                        cursor: 'pointer', transition: 'all 0.15s ease', fontFamily: 'inherit'
-                      }}>{n}</button>
-                    ))}
-                  </div>
-                )}
-                <button className="btn btn-secondary btn-icon" onClick={() => handleStartAdaptiveQuiz(quizMode === 'fixed' ? questionCount : 10, quizMode === 'adaptive')} disabled={isProcessing}>
-                  <RefreshCw size={16}/>{quizMode === 'adaptive' ? 'New Adaptive Quiz ⚡' : `New Quiz (${questionCount} Qs)`}
+                <div style={{ display: 'flex', gap: '0.4rem' }}>
+                  {[5, 10, 15, 20].map(n => (
+                    <button key={n} onClick={() => setQuestionCount(n)} style={{
+                      flex: 1, padding: '0.4rem 0', border: '1.5px solid',
+                      borderColor: questionCount === n ? 'var(--color-accent)' : 'var(--color-border)',
+                      borderRadius: '8px', background: questionCount === n ? 'rgba(99,102,241,0.12)' : 'transparent',
+                      color: questionCount === n ? 'var(--color-accent)' : 'var(--color-text-muted)',
+                      fontWeight: questionCount === n ? 700 : 400, fontSize: '0.8rem',
+                      cursor: 'pointer', transition: 'all 0.15s ease', fontFamily: 'inherit'
+                    }}>{n}</button>
+                  ))}
+                </div>
+                <button className="btn btn-secondary btn-icon" onClick={() => handleStartAdaptiveQuiz(questionCount, quizMode === 'adaptive')} disabled={isProcessing}>
+                  <RefreshCw size={16}/>{quizMode === 'adaptive' ? `New Adaptive Quiz (${questionCount} Qs) ⚡` : `New Quiz (${questionCount} Qs)`}
                 </button>
               </div>
             )}
